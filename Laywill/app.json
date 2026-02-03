@@ -2,6 +2,7 @@
   "expo": {
     "name": "Laywill",
     "slug": "laywill",
+    "scheme": "laywill",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

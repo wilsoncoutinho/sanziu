@@ -5,43 +5,44 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
+import { normalizeEmail } from "@/lib/security";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
     const email =
-      typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      typeof body.email === "string" ? normalizeEmail(body.email) : "";
     const password = typeof body.password === "string" ? body.password : "";
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "Email e senha são obrigatórios" },
+        { error: "Email e senha sao obrigatorios" },
         { status: 400 }
       );
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
+      return NextResponse.json({ error: "Credenciais invalidas" }, { status: 401 });
+    }
+
+    if (!user.emailVerifiedAt) {
+      return NextResponse.json({ error: "Email nao confirmado" }, { status: 403 });
     }
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
+      return NextResponse.json({ error: "Credenciais invalidas" }, { status: 401 });
     }
 
-    // Após autenticar o usuário (ex: user encontrado e senha válida)
     const token = signToken(user.id);
 
-    // Retorna o token no JSON para clientes (ex: mobile) e também
-    // seta cookie HttpOnly para web clients.
     const res = NextResponse.json(
       { ok: true, user: { id: user.id, email: user.email }, token },
       { status: 200 }
     );
 
-    // mantém cookie para web (HttpOnly) — cookie `session` usado pelo endpoint /api/auth/me
     res.cookies.set("session", token, {
       httpOnly: true,
       path: "/",

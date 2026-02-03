@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Modal, ScrollView } from "react-native";
 import { api } from "../lib/api";
 import { theme } from "../ui/theme";
 import { Money } from "../ui/typography";
@@ -29,9 +29,10 @@ export default function NewTransactionScreen({ navigation }: any) {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalMessage, setModalMessage] = useState("");
-  const [modalTitle, setModalTitle] = useState("Aviso");
+  const [saveNotice, setSaveNotice] = useState<{ visible: boolean; title: string }>({
+    visible: false,
+    title: "",
+  });
 
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
@@ -88,21 +89,23 @@ export default function NewTransactionScreen({ navigation }: any) {
     }
   }, [type, categories]);
 
+  function showSaveNotice(title: string) {
+    setSaveNotice({ visible: true, title });
+  }
+
   useEffect(() => {
-    if (!modalVisible) return;
+    if (!saveNotice.visible) return;
     const t = setTimeout(() => {
-      setModalVisible(false);
+      setSaveNotice((prev) => ({ ...prev, visible: false }));
     }, 2000);
     return () => clearTimeout(t);
-  }, [modalVisible]);
+  }, [saveNotice.visible]);
 
   async function save() {
-    if (!accountId) return Alert.alert("Nenhuma conta disponível");
-    if (type === "EXPENSE" && !categoryId) return Alert.alert("Selecione uma categoria");
+    if (!accountId) return showSaveNotice("Nenhuma conta");
+    if (type === "EXPENSE" && !categoryId) return showSaveNotice("Sem categoria");
     if (!amount) {
-      setModalTitle("Atenção");
-      setModalMessage("Digite um valor");
-      setModalVisible(true);
+      showSaveNotice("Digite um valor");
       return;
     }
 
@@ -121,11 +124,9 @@ export default function NewTransactionScreen({ navigation }: any) {
 
       setAmount("");
       setDescription("");
-      setModalTitle("Salvo");
-      setModalMessage("Lançamento registrado");
-      setModalVisible(true);
+      showSaveNotice("Registrado");
     } catch (e: any) {
-      Alert.alert("Erro", e?.message || "Falha ao salvar");
+      showSaveNotice("Erro ao salvar");
     }
   }
 
@@ -229,24 +230,20 @@ export default function NewTransactionScreen({ navigation }: any) {
         <Text style={{ color: "white", fontWeight: "800" }}>Salvar</Text>
       </TouchableOpacity>
 
-      {modalVisible ? (
-        <View
-          style={{
-            marginTop: theme.space(1.5),
-            alignItems: "center",
-          }}
-        >
+      {saveNotice.visible ? (
+        <View style={{ marginTop: theme.space(1.25), alignItems: "center" }}>
           <View
             style={{
               width: "48%",
-              alignSelf: "center",
               padding: theme.space(1.5),
-              borderRadius: theme.radius.input,
+              borderRadius: theme.radius.pill,
               backgroundColor: theme.colors.primary,
               alignItems: "center",
+              borderWidth: 1,
+              borderColor: theme.colors.border,
             }}
           >
-            <Text style={{ fontWeight: "800", color: "white" }}>{modalTitle}</Text>
+            <Text style={{ fontWeight: "800", color: "white" }}>{saveNotice.title}</Text>
           </View>
         </View>
       ) : null}

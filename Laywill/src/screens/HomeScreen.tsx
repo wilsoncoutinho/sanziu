@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import * as Linking from "expo-linking";
 import { api } from "../lib/api";
 import { theme } from "../ui/theme";
@@ -7,6 +7,8 @@ import { Card } from "../ui/Card";
 import { H1, Muted, Money } from "../ui/typography";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
+import { FeedbackModal } from "../ui/FeedbackModal";
 
 
 function toYYYYMM(d: Date) {
@@ -33,6 +35,16 @@ export default function HomeScreen({ navigation }: any) {
     expense: 0,
     net: 0,
   });
+  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
+  const [inviteLink, setInviteLink] = useState("");
+
+  function showModal(title: string, message?: string) {
+    setModal({ visible: true, title, message });
+  }
 
   async function load() {
     setLoading(true);
@@ -107,7 +119,8 @@ export default function HomeScreen({ navigation }: any) {
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               const data = await api("/api/invites", { method: "POST" });
               const inviteLink = Linking.createURL(`invite/${data.token}`);
-              Alert.alert("Convite criado", "Envie este link para sua esposa:\n\n" + inviteLink);
+              setInviteLink(inviteLink);
+              showModal("Convite criado", "Copie e envie este link:\n\n" + inviteLink);
             }}
             style={{ marginTop: theme.space(1.25) }}
           >
@@ -130,6 +143,28 @@ export default function HomeScreen({ navigation }: any) {
           </TouchableOpacity>
         </>
       )}
+      <FeedbackModal
+        visible={modal.visible}
+        title={modal.title}
+        message={modal.message}
+        actionLabel={inviteLink ? "Copiar" : undefined}
+        onAction={
+          inviteLink
+            ? async () => {
+                await Clipboard.setStringAsync(inviteLink);
+                showModal("Copiado ✅", "O link foi copiado para a area de transferencia.");
+                setInviteLink("");
+                setTimeout(() => {
+                  setModal((prev) => ({ ...prev, visible: false }));
+                }, 600);
+              }
+            : undefined
+        }
+        onClose={() => {
+          setInviteLink("");
+          setModal((prev) => ({ ...prev, visible: false }));
+        }}
+      />
     </View>
   );
 }

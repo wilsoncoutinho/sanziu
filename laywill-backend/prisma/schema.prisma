@@ -28,10 +28,13 @@ model User {
   name      String?
   email     String   @unique
   password  String
+  emailVerifiedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   memberships WorkspaceMember[]
+  emailVerifications EmailVerificationCode[]
+  passwordResets PasswordResetToken[]
 }
 
 model Workspace {
@@ -123,4 +126,30 @@ model WorkspaceInvite {
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
 
   createdAt   DateTime @default(now())
+}
+
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }

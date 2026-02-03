@@ -6,6 +6,12 @@ type SendEmailArgs = {
 
 const RESEND_API = "https://api.resend.com/emails";
 
+export function isEmailConfigured() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  return Boolean(apiKey && from);
+}
+
 export async function sendEmail({ to, subject, html }: SendEmailArgs) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;

@@ -3,6 +3,7 @@ import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-nat
 import { api, setToken } from "../lib/api";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function VerifyEmailScreen({ navigation, route }: any) {
   const [email, setEmail] = useState(route?.params?.email || "");
@@ -11,6 +12,7 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
   const [cooldown, setCooldown] = useState(0);
   const [expiresIn, setExpiresIn] = useState(600);
   const [loading, setLoading] = useState(false);
+  const { refreshUser } = useAuth();
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
     visible: false,
     title: "",
@@ -52,6 +54,7 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
 
       if (res?.token) {
         await setToken(res.token);
+        await refreshUser();
         navigation.replace("Main");
         return;
       }
@@ -63,6 +66,7 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
         });
         if (!login.token) throw new Error("Token nao veio no login.");
         await setToken(login.token);
+        await refreshUser();
         navigation.replace("Main");
         return;
       }
@@ -72,6 +76,10 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
     } catch (e: any) {
       const msg = e?.message || "Erro";
       const lower = String(msg).toLowerCase();
+      if (lower.includes("503")) {
+        showModal("Serviço indisponível", "Configuração de email pendente. Tente novamente mais tarde.");
+        return;
+      }
       if (lower.includes("expirado") || lower.includes("410")) {
         showModal("Codigo expirado", "Reenvie o codigo e tente novamente.");
         return;

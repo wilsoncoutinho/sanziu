@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BASE_URL = "http://192.168.0.5:3000";
+// [IMPORTANTE] Troque pela URL do seu backend na nuvem (Vercel, Render, AWS) para o APK funcionar
+const PROD_URL = "https://seu-backend-producao.com";
+const DEV_URL = "http://192.168.0.5:3000";
+const BASE_URL = __DEV__ ? DEV_URL : PROD_URL;
 const TOKEN_KEY = "@meuappfinancas:token";
 
 let token: string | null = null;
@@ -33,18 +36,17 @@ export async function api(path: string, options: RequestInit = {}) {
     headers.Authorization = `Bearer ${currentToken}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!res.ok) {
-    const message = data?.message || `API error ${res.status}`;
-    throw new Error(message);
+    if (!res.ok) {
+      const message = data?.error || data?.message || `Erro na API: ${res.status}`;
+      throw new Error(message);
+    }
+    return data;
+  } catch (error: any) {
+    throw new Error(error?.message || "Falha na conexao com o servidor");
   }
-
-  return data;
 }

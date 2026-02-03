@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { hashToken, normalizeEmail } from "@/lib/security";
-import { resetPasswordEmailTemplate, sendEmail } from "@/lib/email";
+import { isEmailConfigured, resetPasswordEmailTemplate, sendEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +14,13 @@ export async function POST(req: Request) {
 
     if (!email) {
       return NextResponse.json({ error: "Email obrigatorio" }, { status: 400 });
+    }
+
+    if (!isEmailConfigured()) {
+      return NextResponse.json(
+        { error: "Servico de email nao configurado" },
+        { status: 503 }
+      );
     }
 
     const user = await prisma.user.findUnique({ where: { email } });

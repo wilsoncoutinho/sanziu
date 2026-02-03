@@ -43,7 +43,12 @@ export default function RegisterScreen({ navigation }: any) {
         navigation.navigate("VerifyEmail", { email: payload.email, password })
       );
     } catch (e: any) {
-      showModal("Falha ao criar conta", e?.message || "Erro");
+      const msg = e?.message || "Erro";
+      if (String(msg).includes("503")) {
+        showModal("Serviço indisponível", "Configuração de email pendente. Tente novamente mais tarde.");
+        return;
+      }
+      showModal("Falha ao criar conta", msg);
     }
   }
 

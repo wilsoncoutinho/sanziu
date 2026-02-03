@@ -25,7 +25,12 @@ export default function ForgotPasswordScreen({ navigation }: any) {
       });
       showModal("Email enviado", "Verifique sua caixa de entrada.");
     } catch (e: any) {
-      showModal("Falha", e?.message || "Erro");
+      const msg = e?.message || "Erro";
+      if (String(msg).includes("503")) {
+        showModal("Serviço indisponível", "Configuração de email pendente. Tente novamente mais tarde.");
+        return;
+      }
+      showModal("Falha", msg);
     }
   }
 

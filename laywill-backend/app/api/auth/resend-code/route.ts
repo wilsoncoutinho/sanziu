@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateSixDigitCode, hashToken, normalizeEmail } from "@/lib/security";
-import { sendEmail, verificationEmailTemplate } from "@/lib/email";
+import { isEmailConfigured, sendEmail, verificationEmailTemplate } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -13,6 +13,13 @@ export async function POST(req: Request) {
 
     if (!email) {
       return NextResponse.json({ error: "Email obrigatorio" }, { status: 400 });
+    }
+
+    if (!isEmailConfigured()) {
+      return NextResponse.json(
+        { error: "Servico de email nao configurado" },
+        { status: 503 }
+      );
     }
 
     const user = await prisma.user.findUnique({ where: { email } });

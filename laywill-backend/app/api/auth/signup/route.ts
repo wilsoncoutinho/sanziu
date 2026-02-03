@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateSixDigitCode, hashToken, isValidEmail, normalizeEmail } from "@/lib/security";
-import { sendEmail, verificationEmailTemplate } from "@/lib/email";
+import { isEmailConfigured, sendEmail, verificationEmailTemplate } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -31,6 +31,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "A senha deve ter pelo menos 6 caracteres" },
         { status: 400 }
+      );
+    }
+
+    if (!isEmailConfigured()) {
+      return NextResponse.json(
+        { error: "Servico de email nao configurado" },
+        { status: 503 }
       );
     }
 

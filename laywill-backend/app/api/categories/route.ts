@@ -5,6 +5,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserIdFromRequest, getWorkspaceIdForUser } from "@/lib/auth";
 
+function parseMonth(monthStr: string) {
+  if (!/^\d{4}-\d{2}$/.test(monthStr)) return null;
+
+  const [yStr, mStr] = monthStr.split("-");
+  const year = Number(yStr);
+  const month = Number(mStr); // 1..12
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+
+  return { start, end };
+}
+
 export async function GET(req: Request) {
   try {
     const userId = await getSessionUserIdFromRequest(req);
@@ -17,6 +32,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Workspace não encontrado" }, { status: 404 });
     }
 
+    const url = new URL(req.url);
+    const month = url.searchParams.get("month");
+
     const categories = await prisma.category.findMany({
       where: { workspaceId },
       orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -28,7 +46,39 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({ categories }, { status: 200 });
+    if (!month) {
+      return NextResponse.json({ categories }, { status: 200 });
+    }
+
+    const range = parseMonth(month);
+    if (!range) {
+      return NextResponse.json(
+        { error: "month inválido. Use YYYY-MM (ex: 2026-02)" },
+        { status: 400 }
+      );
+    }
+
+    const usage = await prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: {
+        workspaceId,
+        type: "EXPENSE",
+        categoryId: { not: null },
+        date: { gte: range.start, lt: range.end },
+      },
+      _count: { categoryId: true },
+    });
+
+    const usageMap = new Map(
+      usage.map((u) => [u.categoryId as string, u._count.categoryId])
+    );
+
+    const categoriesWithUsage = categories.map((c) => ({
+      ...c,
+      usageCount: usageMap.get(c.id) ?? 0,
+    }));
+
+    return NextResponse.json({ categories: categoriesWithUsage }, { status: 200 });
   } catch (err) {
     console.error("Categories GET error:", err);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -73,7 +123,7 @@ export async function POST(req: Request) {
 
     const name = typeof body.name === "string" ? body.name.trim() : "";
 
-    const type = body.type === "INCOME" || body.type === "EXPENSE" ? body.type : null;
+    const type = body.type === "EXPENSE" ? body.type : null;
 
     if (!name) {
       return NextResponse.json(
@@ -84,7 +134,7 @@ export async function POST(req: Request) {
 
     if (!type) {
       return NextResponse.json(
-        { error: "Tipo da categoria deve ser INCOME ou EXPENSE" },
+        { error: "Tipo da categoria deve ser EXPENSE" },
         { status: 400 }
       );
     }

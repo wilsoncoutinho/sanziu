@@ -128,8 +128,8 @@ export async function POST(req: Request) {
     if (!accountId) {
       return NextResponse.json({ error: "accountId é obrigatório" }, { status: 400 });
     }
-    if (!categoryId) {
-      return NextResponse.json({ error: "categoryId é obrigatório" }, { status: 400 });
+    if (type === "EXPENSE" && !categoryId) {
+      return NextResponse.json({ error: "categoryId é obrigatório para despesas" }, { status: 400 });
     }
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
       return NextResponse.json({ error: "amount inválido (use > 0)" }, { status: 400 });
@@ -151,25 +151,29 @@ export async function POST(req: Request) {
         where: { id: accountId, workspaceId },
         select: { id: true, name: true },
       }),
-      prisma.category.findFirst({
-        where: { id: categoryId, workspaceId },
-        select: { id: true, name: true, type: true },
-      }),
+      categoryId
+        ? prisma.category.findFirst({
+            where: { id: categoryId, workspaceId },
+            select: { id: true, name: true, type: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!account) {
       return NextResponse.json({ error: "Conta não encontrada neste workspace" }, { status: 404 });
     }
-    if (!category) {
-      return NextResponse.json({ error: "Categoria não encontrada neste workspace" }, { status: 404 });
-    }
+    if (type === "EXPENSE") {
+      if (!category) {
+        return NextResponse.json({ error: "Categoria não encontrada neste workspace" }, { status: 404 });
+      }
 
-    // Regra: tipo da transação deve bater com tipo da categoria
-    if (type !== category.type) {
-      return NextResponse.json(
-        { error: `Tipo da transação (${type}) não bate com tipo da categoria (${category.type})` },
-        { status: 400 }
-      );
+      // Regra: tipo da transação deve bater com tipo da categoria
+      if (type !== category.type) {
+        return NextResponse.json(
+          { error: `Tipo da transação (${type}) não bate com tipo da categoria (${category.type})` },
+          { status: 400 }
+        );
+      }
     }
 
     const transaction = await prisma.transaction.create({
@@ -180,7 +184,7 @@ export async function POST(req: Request) {
         date,
         description,
         accountId,
-        categoryId,
+        categoryId: type === "EXPENSE" ? categoryId : null,
       },
       select: {
         id: true,

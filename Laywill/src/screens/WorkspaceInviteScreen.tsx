@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";

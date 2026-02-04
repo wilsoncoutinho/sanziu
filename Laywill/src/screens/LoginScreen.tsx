@@ -1,12 +1,6 @@
 ﻿import React, { useState } from "react";
-import {
-  SafeAreaView,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-} from "react-native";
+import { Text, View, TextInput, TouchableOpacity, Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../ui/theme";
 import { supabase } from "../lib/supabase";
 
@@ -98,13 +92,7 @@ export default function LoginScreen({ navigation }: any) {
         onPress={() => navigation.navigate("InviteCode")}
         style={{ marginTop: 10, alignItems: "center" }}
       >
-        <Text style={{ color: theme.colors.text }}>Tenho um convite</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => navigation.navigate("WorkspaceInvite")}
-        style={{ marginTop: 10, alignItems: "center" }}
-      >
-        <Text style={{ color: theme.colors.text }}>Tenho convite do workspace</Text>
+        <Text style={{ color: theme.colors.text }}>Tenho um Convite de Casal</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => navigation.navigate("EmailChange")}

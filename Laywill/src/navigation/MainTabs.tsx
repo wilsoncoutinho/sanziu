@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Image } from "react-native";
+import { View, Text, TouchableOpacity, Image, Modal } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
@@ -18,7 +19,9 @@ const AVATAR_KEY = "@meuappfinancas:avatarUri";
 
 export default function MainTabs() {
   const { user, signOut } = useAuth();
+  const navigation = useNavigation<any>();
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [accountMenuVisible, setAccountMenuVisible] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
     visible: false,
     title: "",
@@ -82,7 +85,7 @@ export default function MainTabs() {
           headerRight: () => (
             <View style={{ marginRight: theme.space(1.5), flexDirection: "row", alignItems: "center", gap: theme.space(1) }}>
               <TouchableOpacity
-                onPress={handlePickAvatar}
+                onPress={() => setAccountMenuVisible(true)}
                 style={{
                   width: 34,
                   height: 34,
@@ -95,7 +98,7 @@ export default function MainTabs() {
                   overflow: "hidden",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Escolher foto"
+                accessibilityLabel="Conta"
               >
                 {avatarUri ? (
                   <Image source={{ uri: avatarUri }} style={{ width: "100%", height: "100%" }} />
@@ -185,6 +188,78 @@ export default function MainTabs() {
           options={{ tabBarIcon: ({ color, size }) => <Ionicons name="list" color={color} size={size} /> }}
         />
       </Tab.Navigator>
+      <Modal
+        visible={accountMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAccountMenuVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}>
+          <TouchableOpacity
+            onPress={() => setAccountMenuVisible(false)}
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+            accessibilityRole="button"
+            accessibilityLabel="Fechar"
+          />
+          <View
+            style={{
+              marginTop: 64,
+              alignSelf: "flex-end",
+              marginRight: theme.space(1.5),
+              backgroundColor: theme.colors.card,
+              borderRadius: theme.radius.card,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              paddingVertical: theme.space(1),
+              minWidth: 220,
+            }}
+          >
+            <MenuItem
+              label="Conta"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                navigation.navigate("Account");
+              }}
+            />
+            <MenuItem
+              label="Alterar nome"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                navigation.navigate("ChangeName");
+              }}
+            />
+            <MenuItem
+              label="Alterar email"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                navigation.navigate("ChangeEmail");
+              }}
+            />
+            <MenuItem
+              label="Alterar senha"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                navigation.navigate("ChangePassword");
+              }}
+            />
+            <MenuItem
+              label="Tenho um convite de casal"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                navigation.navigate("InviteCode");
+              }}
+            />
+            <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: theme.space(0.5) }} />
+            <MenuItem
+              label="Alterar foto"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                handlePickAvatar();
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
       <FeedbackModal
         visible={modal.visible}
         title={modal.title}
@@ -192,5 +267,19 @@ export default function MainTabs() {
         onClose={() => setModal((prev) => ({ ...prev, visible: false }))}
       />
     </>
+  );
+}
+
+function MenuItem({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        paddingVertical: theme.space(1.25),
+        paddingHorizontal: theme.space(2),
+      }}
+    >
+      <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{label}</Text>
+    </TouchableOpacity>
   );
 }

@@ -1,13 +1,13 @@
-﻿import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
-export default function ForgotPasswordScreen({ navigation }: any) {
+export default function ChangeEmailScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
-  const [shouldGoToReset, setShouldGoToReset] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
     {
       visible: false,
@@ -20,15 +20,18 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     setModal({ visible: true, title, message });
   }
 
-  async function handleSend() {
+  async function handleSave() {
     try {
-      if (!email.trim()) return showModal("Erro", "Digite seu email");
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+      if (!email.trim()) return showModal("Erro", "Digite o novo email");
+      setLoading(true);
+      const { error } = await supabase.auth.updateUser({ email: email.trim().toLowerCase() });
       if (error) throw error;
-      setShouldGoToReset(true);
-      showModal("Código enviado", "Verifique sua caixa de entrada.");
+      showModal("Codigo enviado", "Confirme o novo email com o codigo.");
+      navigation.navigate("EmailChange", { email: email.trim().toLowerCase() });
     } catch (e: any) {
       showModal("Falha", e?.message || "Erro");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -42,14 +45,11 @@ export default function ForgotPasswordScreen({ navigation }: any) {
       }}
     >
       <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
-        Esqueci a senha
-      </Text>
-      <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Enviaremos um código para redefinir sua senha
+        Alterar email
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Email</Text>
+        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Novo email</Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
@@ -62,16 +62,20 @@ export default function ForgotPasswordScreen({ navigation }: any) {
       </View>
 
       <TouchableOpacity
-        onPress={handleSend}
+        onPress={handleSave}
+        disabled={loading}
         style={{
           marginTop: theme.space(2),
           padding: theme.space(2),
           borderRadius: theme.radius.input,
           alignItems: "center",
           backgroundColor: theme.colors.primary,
+          opacity: loading ? 0.6 : 1,
         }}
       >
-        <Text style={{ fontWeight: "800", color: "white" }}>Enviar código</Text>
+        <Text style={{ fontWeight: "800", color: "white" }}>
+          {loading ? "Enviando..." : "Enviar codigo"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -85,13 +89,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
         visible={modal.visible}
         title={modal.title}
         message={modal.message}
-        onClose={() => {
-          setModal((prev) => ({ ...prev, visible: false }));
-          if (shouldGoToReset) {
-            setShouldGoToReset(false);
-            navigation.navigate("ResetPassword", { email: email.trim().toLowerCase() });
-          }
-        }}
+        onClose={() => setModal((prev) => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

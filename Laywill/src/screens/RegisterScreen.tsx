@@ -1,12 +1,6 @@
 ﻿import React, { useState } from "react";
-import {
-  SafeAreaView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Alert,
-} from "react-native";
+import { Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../ui/theme";
 import { supabase } from "../lib/supabase";
 

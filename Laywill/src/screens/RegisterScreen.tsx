@@ -1,62 +1,62 @@
-import React, { useState } from "react";
-import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { api } from "../lib/api";
+﻿import React, { useState } from "react";
+import {
+  SafeAreaView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Alert,
+} from "react-native";
 import { theme } from "../ui/theme";
-import { FeedbackModal } from "../ui/FeedbackModal";
+import { supabase } from "../lib/supabase";
 
 export default function RegisterScreen({ navigation }: any) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
-  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string; onClose?: () => void }>({
-    visible: false,
-    title: "",
-    message: "",
-  });
-
-  function showModal(title: string, message?: string, onClose?: () => void) {
-    setModal({ visible: true, title, message, onClose });
-  }
-
-  function closeModal() {
-    const callback = modal.onClose;
-    setModal((prev) => ({ ...prev, visible: false, onClose: undefined }));
-    callback?.();
-  }
+  const [loading, setLoading] = useState(false);
 
   async function handleRegister() {
-    try {
-      if (!name.trim()) return showModal("Erro", "Digite seu nome");
-      if (!email.trim()) return showModal("Erro", "Digite seu email");
-      if (password.length < 6) return showModal("Erro", "Senha precisa ter pelo menos 6 caracteres");
-      if (password !== password2) return showModal("Erro", "As senhas não conferem");
+    if (!email || !password)
+      return Alert.alert("Erro", "Preencha todos os campos");
+    setLoading(true);
 
-      const payload = { name: name.trim(), email: email.trim().toLowerCase(), password };
+    // CRIA CONTA NO SUPABASE E JÁ MANDA O EMAIL DE CONFIRMAÇÃO
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: name, // Salva o nome nos metadados do usuário
+        },
+      },
+    });
 
-      // cria a conta
-      await api("/api/auth/signup", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      showModal("Conta criada ✅", "Enviamos um codigo de confirmacao.", () =>
-        navigation.navigate("VerifyEmail", { email: payload.email, password })
-      );
-    } catch (e: any) {
-      const msg = e?.message || "Erro";
-      if (String(msg).includes("503")) {
-        showModal("Serviço indisponível", "Configuração de email pendente. Tente novamente mais tarde.");
-        return;
-      }
-      showModal("Falha ao criar conta", msg);
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Erro no cadastro", error.message);
+    } else {
+      Alert.alert("Sucesso!", "Enviamos um código para seu email.", [
+        {
+          text: "OK",
+          onPress: () => navigation.navigate("VerifyEmail", { email: email.trim().toLowerCase() }),
+        },
+      ]);
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, padding: theme.space(2.5), justifyContent: "center", backgroundColor: theme.colors.bg }}>
-      <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>Criar conta</Text>
-      <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Para acessar as finanças do casal
+    <SafeAreaView
+      style={{
+        flex: 1,
+        padding: theme.space(2.5),
+        justifyContent: "center",
+        backgroundColor: theme.colors.bg,
+      }}
+    >
+      <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
+        Criar conta
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
@@ -64,17 +64,7 @@ export default function RegisterScreen({ navigation }: any) {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Ex: Maria"
-          placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
+          style={{ ...theme.input }}
         />
       </View>
 
@@ -85,17 +75,7 @@ export default function RegisterScreen({ navigation }: any) {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
-          placeholder="email@exemplo.com"
-          placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
+          style={{ ...theme.input }}
         />
       </View>
 
@@ -105,37 +85,7 @@ export default function RegisterScreen({ navigation }: any) {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          placeholder="mínimo 6 caracteres"
-          placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
-        />
-      </View>
-
-      <View style={{ marginTop: theme.space(1.75) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Confirmar senha</Text>
-        <TextInput
-          value={password2}
-          onChangeText={setPassword2}
-          secureTextEntry
-          placeholder="repita a senha"
-          placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
+          style={{ ...theme.input }}
         />
       </View>
 
@@ -149,13 +99,17 @@ export default function RegisterScreen({ navigation }: any) {
           backgroundColor: theme.colors.primary,
         }}
       >
-        <Text style={{ fontWeight: "800", color: "white" }}>Criar conta</Text>
+        <Text style={{ fontWeight: "800", color: "white" }}>
+          {loading ? "Criando..." : "Criar conta"}
+        </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: theme.space(1.5), alignItems: "center" }}>
-        <Text style={{ color: theme.colors.text, opacity: 0.85 }}>Já tenho conta</Text>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{ marginTop: theme.space(1.5), alignItems: "center" }}
+      >
+        <Text style={{ color: theme.colors.text }}>Já tenho conta</Text>
       </TouchableOpacity>
-      <FeedbackModal visible={modal.visible} title={modal.title} message={modal.message} onClose={closeModal} />
     </SafeAreaView>
   );
 }

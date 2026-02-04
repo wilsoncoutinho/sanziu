@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Modal, ScrollView } from "react-native";
-import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
+import { getCurrentWorkspaceId } from "../lib/supabaseHelpers";
 import { theme } from "../ui/theme";
 import { Money } from "../ui/typography";
 import { Card } from "../ui/Card";
@@ -15,12 +16,26 @@ function toYYYYMM(d: Date) {
   return `${y}-${m}`;
 }
 
+function monthRange(yyyyMm: string) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const start = new Date(y, (m || 1) - 1, 1);
+  const end = new Date(y, (m || 1), 1);
+  return { start, end };
+}
+
+function amountToNumber(v: any) {
+  const s = typeof v === "string" ? v : v?.toString?.() ?? String(v ?? "0");
+  const n = Number(String(s).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function NewTransactionScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [month] = useState(toYYYYMM(new Date()));
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [accountId, setAccountId] = useState("");
@@ -57,14 +72,49 @@ export default function NewTransactionScreen({ navigation }: any) {
   async function loadBase() {
     setLoading(true);
     try {
-      const [a, c] = await Promise.all([
-        api("/api/accounts", { method: "GET" }),
-        api(`/api/categories?month=${month}`, { method: "GET" }),
-      ]);
-      setAccounts(a.accounts || []);
-      setCategories(c.categories || []);
+      const ws = await getCurrentWorkspaceId();
+      setWorkspaceId(ws);
+      if (!ws) {
+        setAccounts([]);
+        setCategories([]);
+        return;
+      }
 
-      const firstAcc = (a.accounts || [])[0]?.id;
+      const [a, c] = await Promise.all([
+        supabase.from("Account").select("id, name, type").eq("workspaceId", ws),
+        supabase.from("Category").select("id, name, type").eq("workspaceId", ws),
+      ]);
+
+      if (a.error) throw a.error;
+      if (c.error) throw c.error;
+
+      const { start, end } = monthRange(month);
+      const usageRes = await supabase
+        .from("Transaction")
+        .select("categoryId")
+        .eq("workspaceId", ws)
+        .gte("date", start.toISOString())
+        .lt("date", end.toISOString())
+        .not("categoryId", "is", null);
+
+      if (usageRes.error) throw usageRes.error;
+
+      const usageMap = new Map<string, number>();
+      for (const t of usageRes.data || []) {
+        const id = (t as any).categoryId as string | null;
+        if (!id) continue;
+        usageMap.set(id, (usageMap.get(id) || 0) + 1);
+      }
+
+      const withUsage = (c.data || []).map((cat: any) => ({
+        ...cat,
+        usageCount: usageMap.get(cat.id) || 0,
+      }));
+
+      setAccounts((a.data || []) as Account[]);
+      setCategories(withUsage as Category[]);
+
+      const firstAcc = (a.data || [])[0]?.id;
       if (firstAcc) setAccountId(firstAcc);
     } finally {
       setLoading(false);
@@ -102,6 +152,7 @@ export default function NewTransactionScreen({ navigation }: any) {
   }, [saveNotice.visible]);
 
   async function save() {
+    if (!workspaceId) return showSaveNotice("Sem workspace");
     if (!accountId) return showSaveNotice("Nenhuma conta");
     if (type === "EXPENSE" && !categoryId) return showSaveNotice("Sem categoria");
     if (!amount) {
@@ -109,18 +160,21 @@ export default function NewTransactionScreen({ navigation }: any) {
       return;
     }
 
+    const parsedAmount = amountToNumber(amount);
+    if (!parsedAmount) return showSaveNotice("Valor inválido");
+
     try {
-      await api("/api/transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          type,
-          amount, // pode ser string, backend aceita
-          date: new Date().toISOString().slice(0, 10),
-          description: description || null,
-          accountId,
-          categoryId: type === "EXPENSE" ? categoryId : null,
-        }),
+      const { error } = await supabase.from("Transaction").insert({
+        type,
+        amount: parsedAmount,
+        date: new Date().toISOString(),
+        description: description || null,
+        accountId,
+        categoryId: type === "EXPENSE" ? categoryId : null,
+        workspaceId,
       });
+
+      if (error) throw error;
 
       setAmount("");
       setDescription("");
@@ -140,7 +194,6 @@ export default function NewTransactionScreen({ navigation }: any) {
 
   return (
     <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg, position: "relative" }}>
-
       {/* Tipo */}
       <View style={{ flexDirection: "row", gap: theme.space(1.25), marginTop: theme.space(1.75) }}>
         <Pill active={type === "EXPENSE"} label="Despesa" onPress={() => setType("EXPENSE")} />
@@ -148,7 +201,16 @@ export default function NewTransactionScreen({ navigation }: any) {
       </View>
 
       {/* Valor grande */}
-      <View style={{ marginTop: theme.space(1.75), backgroundColor: theme.colors.card, borderRadius: theme.radius.card, padding: theme.space(2), borderWidth: 1, borderColor: theme.colors.border }}>
+      <View
+        style={{
+          marginTop: theme.space(1.75),
+          backgroundColor: theme.colors.card,
+          borderRadius: theme.radius.card,
+          padding: theme.space(2),
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+        }}
+      >
         <Text style={{ fontSize: 12, color: theme.colors.muted }}>Valor</Text>
         <TextInput
           value={amount}
@@ -161,7 +223,16 @@ export default function NewTransactionScreen({ navigation }: any) {
       </View>
 
       {type === "EXPENSE" && (
-        <View style={{ marginTop: theme.space(1.5), backgroundColor: theme.colors.card, borderRadius: theme.radius.card, padding: theme.space(2), borderWidth: 1, borderColor: theme.colors.border }}>
+        <View
+          style={{
+            marginTop: theme.space(1.5),
+            backgroundColor: theme.colors.card,
+            borderRadius: theme.radius.card,
+            padding: theme.space(2),
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
           <Text style={{ fontSize: 12, color: theme.colors.muted }}>Categoria</Text>
           <TouchableOpacity
             onPress={() => setCategoryModalVisible(true)}
@@ -183,49 +254,50 @@ export default function NewTransactionScreen({ navigation }: any) {
             <Ionicons name="chevron-down" size={18} color={theme.colors.muted} />
           </TouchableOpacity>
 
-          <Text style={{ marginTop: theme.space(1.5), fontSize: 12, color: theme.colors.muted }}>Descrição (opcional)</Text>
+          <Text style={{ marginTop: theme.space(1.5), fontSize: 12, color: theme.colors.muted }}>
+            Descrição (opcional)
+          </Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
             placeholder="Ex: Mercado"
             placeholderTextColor={theme.colors.muted}
-            style={{
-              marginTop: theme.space(0.75),
-              padding: theme.space(1.5),
-              borderRadius: theme.radius.input,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.card,
-              color: theme.colors.text,
-            }}
+            style={{ marginTop: theme.space(0.75), ...theme.input }}
           />
         </View>
       )}
 
       {type === "INCOME" && (
-        <View style={{ marginTop: theme.space(1.5), backgroundColor: theme.colors.card, borderRadius: theme.radius.card, padding: theme.space(2), borderWidth: 1, borderColor: theme.colors.border }}>
+        <View
+          style={{
+            marginTop: theme.space(1.5),
+            backgroundColor: theme.colors.card,
+            borderRadius: theme.radius.card,
+            padding: theme.space(2),
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
           <Text style={{ fontSize: 12, color: theme.colors.muted }}>Descrição (opcional)</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
             placeholder="Ex: Salário"
             placeholderTextColor={theme.colors.muted}
-            style={{
-              marginTop: theme.space(0.75),
-              padding: theme.space(1.5),
-              borderRadius: theme.radius.input,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.card,
-              color: theme.colors.text,
-            }}
+            style={{ marginTop: theme.space(0.75), ...theme.input }}
           />
         </View>
       )}
 
       <TouchableOpacity
         onPress={save}
-        style={{ marginTop: theme.space(1.75), backgroundColor: theme.colors.primary, padding: theme.space(2), borderRadius: theme.radius.input, alignItems: "center" }}
+        style={{
+          marginTop: theme.space(1.75),
+          backgroundColor: theme.colors.primary,
+          padding: theme.space(2),
+          borderRadius: theme.radius.input,
+          alignItems: "center",
+        }}
       >
         <Text style={{ color: "white", fontWeight: "800" }}>Salvar</Text>
       </TouchableOpacity>
@@ -280,7 +352,9 @@ export default function NewTransactionScreen({ navigation }: any) {
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space(1) }}>
-                      <Text style={{ color: theme.colors.text, fontWeight: active ? "800" : "600" }}>{c.name}</Text>
+                      <Text style={{ color: theme.colors.text, fontWeight: active ? "800" : "600" }}>
+                        {c.name}
+                      </Text>
                       {(c.usageCount ?? 0) > 0 ? (
                         <View
                           style={{

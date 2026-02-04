@@ -15,4 +15,12 @@ export const theme = {
     input: 14,
   },
   space: (n: number) => n * 8,
+  input: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#121A2A",
+    color: "#EAF0FF",
+  },
 };

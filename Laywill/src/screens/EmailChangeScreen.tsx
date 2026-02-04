@@ -1,15 +1,15 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
-export default function VerifyEmailScreen({ navigation, route }: any) {
+export default function EmailChangeScreen({ navigation, route }: any) {
   const [email, setEmail] = useState(route?.params?.email || "");
   const [code, setCode] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [shouldGoToLogin, setShouldGoToLogin] = useState(false);
+  const [shouldGoBack, setShouldGoBack] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
     {
       visible: false,
@@ -36,11 +36,11 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
       const { error } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: code.trim(),
-        type: "email",
+        type: "email_change",
       });
       if (error) throw error;
-      setShouldGoToLogin(true);
-      showModal("Conta confirmada", "Você já pode entrar no app.");
+      setShouldGoBack(true);
+      showModal("Email atualizado", "Seu novo email foi confirmado.");
     } catch (e: any) {
       showModal("Falha", e?.message || "Erro");
     } finally {
@@ -53,11 +53,11 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
       if (!email.trim()) return showModal("Erro", "Digite seu email");
       setLoading(true);
       const { error } = await supabase.auth.resend({
-        type: "signup",
+        type: "email_change",
         email: email.trim().toLowerCase(),
       });
       if (error) throw error;
-      showModal("Email enviado", "Verifique sua caixa de entrada.");
+      showModal("Código enviado", "Verifique sua caixa de entrada.");
       setCooldown(30);
     } catch (e: any) {
       showModal("Falha", e?.message || "Erro");
@@ -76,10 +76,10 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
       }}
     >
       <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
-        Confirmar email
+        Confirmar novo email
       </Text>
       <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Enviamos um código para o seu email. Digite abaixo para confirmar a conta.
+        Digite o email novo e o código recebido.
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
@@ -125,7 +125,7 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
         }}
       >
         <Text style={{ fontWeight: "800", color: "white" }}>
-          {loading ? "Confirmando..." : "Confirmar"}
+          {loading ? "Confirmando..." : "Confirmar email"}
         </Text>
       </TouchableOpacity>
 
@@ -159,9 +159,9 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
         message={modal.message}
         onClose={() => {
           setModal((prev) => ({ ...prev, visible: false }));
-          if (shouldGoToLogin) {
-            setShouldGoToLogin(false);
-            navigation.navigate("Login");
+          if (shouldGoBack) {
+            setShouldGoBack(false);
+            navigation.goBack();
           }
         }}
       />

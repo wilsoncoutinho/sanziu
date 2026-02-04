@@ -1,34 +1,87 @@
-import React, { useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
 export default function ResetPasswordScreen({ navigation, route }: any) {
-  const [token, setToken] = useState(route?.params?.token || "");
-  const [showTokenInput, setShowTokenInput] = useState(!route?.params?.token);
+  const accessToken = route?.params?.accessToken || "";
+  const refreshToken = route?.params?.refreshToken || "";
+  const initialEmail = route?.params?.email || "";
+
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
-  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
-    visible: false,
-    title: "",
-    message: "",
-  });
+  const [sessionReady, setSessionReady] = useState(false);
+  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
+    {
+      visible: false,
+      title: "",
+      message: "",
+    }
+  );
 
   function showModal(title: string, message?: string) {
     setModal({ visible: true, title, message });
   }
 
+  const hasLinkTokens = Boolean(accessToken && refreshToken);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function initSession() {
+      if (!hasLinkTokens) return;
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (cancelled) return;
+      if (error) {
+        showModal("Erro", error.message || "Link inválido ou expirado");
+        return;
+      }
+      setSessionReady(true);
+    }
+
+    initSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, refreshToken, hasLinkTokens]);
+
   async function handleReset() {
     try {
-      if (!token.trim()) return showModal("Erro", "Token obrigatorio");
+      if (!hasLinkTokens && !email.trim()) {
+        return showModal("Erro", "Digite seu email.");
+      }
+      if (!hasLinkTokens && !code.trim()) {
+        return showModal("Erro", "Digite o código recebido.");
+      }
       if (password.length < 6) return showModal("Erro", "Senha precisa ter pelo menos 6 caracteres");
       if (password !== password2) return showModal("Erro", "As senhas nao conferem");
 
-      await api("/api/auth/reset-password", {
-        method: "POST",
-        body: JSON.stringify({ token: token.trim(), password }),
-      });
+      if (!sessionReady) {
+        if (hasLinkTokens) {
+          return showModal("Erro", "Sessão ainda não pronta. Tente novamente.");
+        }
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: email.trim().toLowerCase(),
+          token: code.trim(),
+          type: "recovery",
+        });
+        if (error) throw error;
+        if (data?.session) {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        }
+        setSessionReady(true);
+      }
+
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
 
       showModal("Senha alterada", "Agora voce pode fazer login.");
       navigation.goBack();
@@ -38,43 +91,60 @@ export default function ResetPasswordScreen({ navigation, route }: any) {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, padding: theme.space(2.5), justifyContent: "center", backgroundColor: theme.colors.bg }}>
-      <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>Nova senha</Text>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        padding: theme.space(2.5),
+        justifyContent: "center",
+        backgroundColor: theme.colors.bg,
+      }}
+    >
+      <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
+        Nova senha
+      </Text>
       <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
         Crie uma nova senha para sua conta
       </Text>
 
-      {showTokenInput ? (
+      {!hasLinkTokens ? (
         <View style={{ marginTop: theme.space(2.5) }}>
-          <Text style={{ fontSize: 12, color: theme.colors.muted }}>Token</Text>
-          <TextInput
-            value={token}
-            onChangeText={setToken}
-            autoCapitalize="none"
-            placeholder="Cole o token aqui"
-            placeholderTextColor={theme.colors.muted}
-            style={{
-              marginTop: theme.space(0.75),
-              padding: theme.space(1.75),
-              borderRadius: theme.radius.input,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.card,
-              color: theme.colors.text,
-            }}
-          />
+          <Text style={{ color: theme.colors.muted }}>Digite o email e o código recebido.</Text>
         </View>
-      ) : (
-        <View style={{ marginTop: theme.space(2.5) }}>
-          <Text style={{ color: theme.colors.muted }}>Token recebido pelo link.</Text>
-          <TouchableOpacity
-            onPress={() => setShowTokenInput(true)}
-            style={{ marginTop: theme.space(0.75) }}
-          >
-            <Text style={{ color: theme.colors.text, opacity: 0.85 }}>Usar outro token</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      ) : null}
+
+      {!hasLinkTokens ? (
+        <>
+          <View style={{ marginTop: theme.space(1.75) }}>
+            <Text style={{ fontSize: 12, color: theme.colors.muted }}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="email@exemplo.com"
+              placeholderTextColor={theme.colors.muted}
+              style={{ marginTop: theme.space(0.75), ...theme.input }}
+            />
+          </View>
+
+          <View style={{ marginTop: theme.space(1.75) }}>
+            <Text style={{ fontSize: 12, color: theme.colors.muted }}>Código</Text>
+            <TextInput
+              value={code}
+              onChangeText={setCode}
+              keyboardType="number-pad"
+              placeholder="000000"
+              placeholderTextColor={theme.colors.muted}
+              maxLength={6}
+              style={{
+                marginTop: theme.space(0.75),
+                ...theme.input,
+                letterSpacing: 4,
+              }}
+            />
+          </View>
+        </>
+      ) : null}
 
       <View style={{ marginTop: theme.space(1.75) }}>
         <Text style={{ fontSize: 12, color: theme.colors.muted }}>Nova senha</Text>
@@ -84,15 +154,7 @@ export default function ResetPasswordScreen({ navigation, route }: any) {
           secureTextEntry
           placeholder="minimo 6 caracteres"
           placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
+          style={{ marginTop: theme.space(0.75), ...theme.input }}
         />
       </View>
 
@@ -104,15 +166,7 @@ export default function ResetPasswordScreen({ navigation, route }: any) {
           secureTextEntry
           placeholder="repita a senha"
           placeholderTextColor={theme.colors.muted}
-          style={{
-            marginTop: theme.space(0.75),
-            padding: theme.space(1.75),
-            borderRadius: theme.radius.input,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-            color: theme.colors.text,
-          }}
+          style={{ marginTop: theme.space(0.75), ...theme.input }}
         />
       </View>
 
@@ -124,12 +178,16 @@ export default function ResetPasswordScreen({ navigation, route }: any) {
           borderRadius: theme.radius.input,
           alignItems: "center",
           backgroundColor: theme.colors.primary,
+          opacity: hasLinkTokens && !sessionReady ? 0.6 : 1,
         }}
       >
         <Text style={{ fontWeight: "800", color: "white" }}>Salvar nova senha</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: theme.space(1.5), alignItems: "center" }}>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={{ marginTop: theme.space(1.5), alignItems: "center" }}
+      >
         <Text style={{ color: theme.colors.text, opacity: 0.85 }}>Voltar</Text>
       </TouchableOpacity>
 

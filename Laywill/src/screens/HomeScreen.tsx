@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
-import * as Linking from "expo-linking";
-import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
+import { getCurrentWorkspaceId } from "../lib/supabaseHelpers";
 import { theme } from "../ui/theme";
 import { Card } from "../ui/Card";
 import { H1, Muted, Money } from "../ui/typography";
@@ -10,11 +10,17 @@ import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
-
 function toYYYYMM(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+function monthRange(yyyyMm: string) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const start = new Date(y, (m || 1) - 1, 1);
+  const end = new Date(y, (m || 1), 1);
+  return { start, end };
 }
 
 function amountToNumber(v: any) {
@@ -27,20 +33,29 @@ function BRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function createInviteCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 export default function HomeScreen({ navigation }: any) {
   const [month] = useState(toYYYYMM(new Date()));
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<{ income: number; expense: number; net: number }>({
-    income: 0,
-    expense: 0,
-    net: 0,
-  });
-  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
-    visible: false,
-    title: "",
-    message: "",
-  });
-  const [inviteLink, setInviteLink] = useState("");
+  const [summary, setSummary] = useState<{ income: number; expense: number; net: number }>(
+    {
+      income: 0,
+      expense: 0,
+      net: 0,
+    }
+  );
+  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
+    {
+      visible: false,
+      title: "",
+      message: "",
+    }
+  );
+  const [inviteCode, setInviteCode] = useState("");
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   function showModal(title: string, message?: string) {
     setModal({ visible: true, title, message });
@@ -49,12 +64,35 @@ export default function HomeScreen({ navigation }: any) {
   async function load() {
     setLoading(true);
     try {
-      const data = await api(`/api/transactions?month=${month}`, { method: "GET" });
-      setSummary({
-        income: amountToNumber(data.summary?.income),
-        expense: amountToNumber(data.summary?.expense),
-        net: amountToNumber(data.summary?.net),
-      });
+      const ws = await getCurrentWorkspaceId();
+      setWorkspaceId(ws);
+      if (!ws) {
+        setSummary({ income: 0, expense: 0, net: 0 });
+        return;
+      }
+
+      const { start, end } = monthRange(month);
+      const { data, error } = await supabase
+        .from("Transaction")
+        .select("type, amount")
+        .eq("workspaceId", ws)
+        .gte("date", start.toISOString())
+        .lt("date", end.toISOString());
+
+      if (error) throw error;
+
+      let income = 0;
+      let expense = 0;
+      for (const t of data || []) {
+        const v = amountToNumber((t as any).amount);
+        if ((t as any).type === "INCOME") income += v;
+        else expense += v;
+      }
+
+      setSummary({ income, expense, net: income - expense });
+    } catch (e: any) {
+      showModal("Falha", e?.message || "Erro");
+      setSummary({ income: 0, expense: 0, net: 0 });
     } finally {
       setLoading(false);
     }
@@ -66,12 +104,16 @@ export default function HomeScreen({ navigation }: any) {
     return unsub;
   }, [navigation]);
 
-  const netLabel = useMemo(() => (summary.net >= 0 ? "Saldo positivo" : "Saldo negativo"), [summary.net]);
+  const netLabel = useMemo(
+    () => (summary.net >= 0 ? "Saldo positivo" : "Saldo negativo"),
+    [summary.net]
+  );
 
   return (
     <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg }}>
       <Text style={H1}>Resumo do mês</Text>
       <Text style={[Muted, { marginTop: 6 }]}>{month}</Text>
+      <Text style={[Muted, { marginTop: 4 }]}>{netLabel}</Text>
 
       {loading ? (
         <View style={{ marginTop: theme.space(2.5) }}>
@@ -96,7 +138,14 @@ export default function HomeScreen({ navigation }: any) {
             }}
             style={{ marginTop: theme.space(1.25) }}
           >
-            <Card style={{ padding: theme.space(1.75), flexDirection: "row", alignItems: "center", gap: theme.space(1.5) }}>
+            <Card
+              style={{
+                padding: theme.space(1.75),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.space(1.5),
+              }}
+            >
               <View
                 style={{
                   width: 36,
@@ -109,7 +158,9 @@ export default function HomeScreen({ navigation }: any) {
               >
                 <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>Ver extrato do mês</Text>
+              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
+                Ver extrato do mês
+              </Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
             </Card>
           </TouchableOpacity>
@@ -117,14 +168,40 @@ export default function HomeScreen({ navigation }: any) {
           <TouchableOpacity
             onPress={async () => {
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              const data = await api("/api/invites", { method: "POST" });
-              const inviteLink = Linking.createURL(`invite/${data.token}`);
-              setInviteLink(inviteLink);
-              showModal("Convite criado", "Copie e envie este link:\n\n" + inviteLink);
+              if (!workspaceId) {
+                showModal("Workspace", "Nenhum workspace encontrado.");
+                return;
+              }
+
+              const token = createInviteCode();
+              const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+              const { error } = await supabase
+                .from("WorkspaceInvite")
+                .insert({
+                  token,
+                  workspaceId,
+                  role: "EDITOR",
+                  expiresAt,
+                });
+
+              if (error) {
+                showModal("Falha", error.message || "Erro ao criar convite");
+                return;
+              }
+
+              setInviteCode(token);
+              showModal("Convite criado", "Copie e envie este código:\n\n" + token);
             }}
             style={{ marginTop: theme.space(1.25) }}
           >
-            <Card style={{ padding: theme.space(1.75), flexDirection: "row", alignItems: "center", gap: theme.space(1.5) }}>
+            <Card
+              style={{
+                padding: theme.space(1.75),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: theme.space(1.5),
+              }}
+            >
               <View
                 style={{
                   width: 36,
@@ -137,7 +214,9 @@ export default function HomeScreen({ navigation }: any) {
               >
                 <Ionicons name="person-add-outline" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>Convidar esposa</Text>
+              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
+                Convidar esposa
+              </Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
             </Card>
           </TouchableOpacity>
@@ -147,13 +226,13 @@ export default function HomeScreen({ navigation }: any) {
         visible={modal.visible}
         title={modal.title}
         message={modal.message}
-        actionLabel={inviteLink ? "Copiar" : undefined}
+        actionLabel={inviteCode ? "Copiar código" : undefined}
         onAction={
-          inviteLink
+          inviteCode
             ? async () => {
-                await Clipboard.setStringAsync(inviteLink);
-                showModal("Copiado ✅", "O link foi copiado para a area de transferencia.");
-                setInviteLink("");
+                await Clipboard.setStringAsync(inviteCode);
+                showModal("Copiado", "O codigo foi copiado para a area de transferencia.");
+                setInviteCode("");
                 setTimeout(() => {
                   setModal((prev) => ({ ...prev, visible: false }));
                 }, 600);
@@ -161,7 +240,7 @@ export default function HomeScreen({ navigation }: any) {
             : undefined
         }
         onClose={() => {
-          setInviteLink("");
+          setInviteCode("");
           setModal((prev) => ({ ...prev, visible: false }));
         }}
       />
@@ -185,7 +264,9 @@ function MiniStat({ icon, label, value }: { icon: any; label: string; value: str
         <Ionicons name={icon} size={16} color={theme.colors.success} />
         <Text style={{ fontSize: 12, color: theme.colors.muted }}>{label}</Text>
       </View>
-      <Text style={{ marginTop: 6, fontSize: 16, fontWeight: "800", color: theme.colors.text }}>{value}</Text>
+      <Text style={{ marginTop: 6, fontSize: 16, fontWeight: "800", color: theme.colors.text }}>
+        {value}
+      </Text>
     </View>
   );
 }

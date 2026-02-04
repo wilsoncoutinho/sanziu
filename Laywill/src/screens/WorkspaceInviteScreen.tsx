@@ -1,12 +1,11 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { supabase } from "../lib/supabase";
+import * as Linking from "expo-linking";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
-export default function ForgotPasswordScreen({ navigation }: any) {
-  const [email, setEmail] = useState("");
-  const [shouldGoToReset, setShouldGoToReset] = useState(false);
+export default function WorkspaceInviteScreen({ navigation }: any) {
+  const [code, setCode] = useState("");
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
     {
       visible: false,
@@ -19,16 +18,12 @@ export default function ForgotPasswordScreen({ navigation }: any) {
     setModal({ visible: true, title, message });
   }
 
-  async function handleSend() {
-    try {
-      if (!email.trim()) return showModal("Erro", "Digite seu email");
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
-      if (error) throw error;
-      setShouldGoToReset(true);
-      showModal("Código enviado", "Verifique sua caixa de entrada.");
-    } catch (e: any) {
-      showModal("Falha", e?.message || "Erro");
-    }
+  async function handleConfirm() {
+    if (!code.trim()) return showModal("Erro", "Digite o codigo recebido");
+    if (code.trim().length < 6) return showModal("Erro", "Codigo invalido");
+    const url = Linking.createURL(`invite/${code.trim()}`);
+    await Linking.openURL(url);
+    navigation.goBack();
   }
 
   return (
@@ -41,27 +36,31 @@ export default function ForgotPasswordScreen({ navigation }: any) {
       }}
     >
       <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
-        Esqueci a senha
+        Convite do workspace
       </Text>
       <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Enviaremos um código para redefinir sua senha
+        Digite o codigo enviado para entrar no workspace.
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Email</Text>
+        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Codigo</Text>
         <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="email@exemplo.com"
+          value={code}
+          onChangeText={setCode}
+          keyboardType="number-pad"
+          placeholder="000000"
           placeholderTextColor={theme.colors.muted}
-          style={{ marginTop: theme.space(0.75), ...theme.input }}
+          maxLength={6}
+          style={{
+            marginTop: theme.space(0.75),
+            ...theme.input,
+            letterSpacing: 4,
+          }}
         />
       </View>
 
       <TouchableOpacity
-        onPress={handleSend}
+        onPress={handleConfirm}
         style={{
           marginTop: theme.space(2),
           padding: theme.space(2),
@@ -70,7 +69,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
           backgroundColor: theme.colors.primary,
         }}
       >
-        <Text style={{ fontWeight: "800", color: "white" }}>Enviar código</Text>
+        <Text style={{ fontWeight: "800", color: "white" }}>Confirmar convite</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -84,13 +83,7 @@ export default function ForgotPasswordScreen({ navigation }: any) {
         visible={modal.visible}
         title={modal.title}
         message={modal.message}
-        onClose={() => {
-          setModal((prev) => ({ ...prev, visible: false }));
-          if (shouldGoToReset) {
-            setShouldGoToReset(false);
-            navigation.navigate("ResetPassword", { email: email.trim().toLowerCase() });
-          }
-        }}
+        onClose={() => setModal((prev) => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );

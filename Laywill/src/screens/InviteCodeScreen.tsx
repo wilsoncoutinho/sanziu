@@ -1,13 +1,14 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 
-export default function VerifyEmailScreen({ navigation, route }: any) {
-  const [email, setEmail] = useState(route?.params?.email || "");
+export default function InviteCodeScreen({ navigation }: any) {
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [cooldown, setCooldown] = useState(0);
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [loading, setLoading] = useState(false);
   const [shouldGoToLogin, setShouldGoToLogin] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
@@ -22,43 +23,33 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
     setModal({ visible: true, title, message });
   }
 
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cooldown]);
-
   async function handleConfirm() {
     try {
       if (!email.trim()) return showModal("Erro", "Digite seu email");
       if (!code.trim()) return showModal("Erro", "Digite o código recebido");
+      if (password.length < 6) return showModal("Erro", "Senha precisa ter pelo menos 6 caracteres");
+      if (password !== password2) return showModal("Erro", "As senhas nao conferem");
       setLoading(true);
-      const { error } = await supabase.auth.verifyOtp({
+
+      const { data, error } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: code.trim(),
-        type: "email",
+        type: "invite",
       });
       if (error) throw error;
-      setShouldGoToLogin(true);
-      showModal("Conta confirmada", "Você já pode entrar no app.");
-    } catch (e: any) {
-      showModal("Falha", e?.message || "Erro");
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  async function handleResend() {
-    try {
-      if (!email.trim()) return showModal("Erro", "Digite seu email");
-      setLoading(true);
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: email.trim().toLowerCase(),
-      });
-      if (error) throw error;
-      showModal("Email enviado", "Verifique sua caixa de entrada.");
-      setCooldown(30);
+      if (data?.session) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+
+      setShouldGoToLogin(true);
+      showModal("Convite confirmado", "Sua conta foi ativada. Você já pode entrar.");
     } catch (e: any) {
       showModal("Falha", e?.message || "Erro");
     } finally {
@@ -76,10 +67,10 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
       }}
     >
       <Text style={{ fontSize: 28, fontWeight: "800", color: theme.colors.text }}>
-        Confirmar email
+        Confirmar convite
       </Text>
       <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Enviamos um código para o seu email. Digite abaixo para confirmar a conta.
+        Digite o email, o código e defina sua senha.
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
@@ -112,6 +103,30 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
         />
       </View>
 
+      <View style={{ marginTop: theme.space(1.75) }}>
+        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Senha</Text>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="minimo 6 caracteres"
+          placeholderTextColor={theme.colors.muted}
+          style={{ marginTop: theme.space(0.75), ...theme.input }}
+        />
+      </View>
+
+      <View style={{ marginTop: theme.space(1.75) }}>
+        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Confirmar senha</Text>
+        <TextInput
+          value={password2}
+          onChangeText={setPassword2}
+          secureTextEntry
+          placeholder="repita a senha"
+          placeholderTextColor={theme.colors.muted}
+          style={{ marginTop: theme.space(0.75), ...theme.input }}
+        />
+      </View>
+
       <TouchableOpacity
         onPress={handleConfirm}
         disabled={loading}
@@ -125,24 +140,7 @@ export default function VerifyEmailScreen({ navigation, route }: any) {
         }}
       >
         <Text style={{ fontWeight: "800", color: "white" }}>
-          {loading ? "Confirmando..." : "Confirmar"}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handleResend}
-        disabled={loading || cooldown > 0}
-        style={{
-          marginTop: theme.space(1.25),
-          padding: theme.space(2),
-          borderRadius: theme.radius.input,
-          alignItems: "center",
-          backgroundColor: theme.colors.primary,
-          opacity: loading || cooldown > 0 ? 0.6 : 1,
-        }}
-      >
-        <Text style={{ fontWeight: "800", color: "white" }}>
-          {cooldown > 0 ? `Reenviar (${cooldown}s)` : "Reenviar código"}
+          {loading ? "Confirmando..." : "Confirmar convite"}
         </Text>
       </TouchableOpacity>
 

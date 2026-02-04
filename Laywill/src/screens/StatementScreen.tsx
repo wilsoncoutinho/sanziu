@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, FlatList, TouchableOpacity } from "react-native";
-import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
+import { getCurrentWorkspaceId } from "../lib/supabaseHelpers";
 import { theme } from "../ui/theme";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -8,6 +9,13 @@ function toYYYYMM(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+function monthRange(yyyyMm: string) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const start = new Date(y, (m || 1) - 1, 1);
+  const end = new Date(y, (m || 1), 1);
+  return { start, end };
 }
 
 function toMonthLabel(yyyyMm: string) {
@@ -41,8 +49,23 @@ export default function StatementScreen({ navigation }: any) {
   async function load() {
     setLoading(true);
     try {
-      const data = await api(`/api/transactions?month=${month}`, { method: "GET" });
-      setTxs(data.transactions || []);
+      const ws = await getCurrentWorkspaceId();
+      if (!ws) {
+        setTxs([]);
+        return;
+      }
+
+      const { start, end } = monthRange(month);
+      const { data, error } = await supabase
+        .from("Transaction")
+        .select("id, type, amount, date, description, category:Category(name), account:Account(name)")
+        .eq("workspaceId", ws)
+        .gte("date", start.toISOString())
+        .lt("date", end.toISOString())
+        .order("date", { ascending: false });
+
+      if (error) throw error;
+      setTxs(data || []);
     } finally {
       setLoading(false);
     }
@@ -64,7 +87,14 @@ export default function StatementScreen({ navigation }: any) {
 
   return (
     <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg }}>
-      <View style={{ marginTop: theme.space(0.75), flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View
+        style={{
+          marginTop: theme.space(0.75),
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <TouchableOpacity
           onPress={() => setMonth((m) => shiftMonth(m, -1))}
           style={{
@@ -114,22 +144,34 @@ export default function StatementScreen({ navigation }: any) {
           const isExpense = item.type === "EXPENSE";
           const title = item.category?.name ?? (isExpense ? "Despesa" : "Receita");
           return (
-            <View style={{ backgroundColor: theme.colors.card, borderRadius: theme.radius.card, padding: theme.space(1.75), borderWidth: 1, borderColor: theme.colors.border }}>
+            <View
+              style={{
+                backgroundColor: theme.colors.card,
+                borderRadius: theme.radius.card,
+                padding: theme.space(1.75),
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
               <Text style={{ fontWeight: "800", color: theme.colors.text }}>
                 {title} {item.description ? `— ${item.description}` : ""}
               </Text>
               <Text style={{ marginTop: theme.space(0.75), color: theme.colors.muted }}>
                 {String(item.date).slice(0, 10)} • {item.account?.name}
               </Text>
-              <Text style={{ marginTop: theme.space(1.25), fontSize: 18, fontWeight: "900", color: theme.colors.text }}>
-                {isExpense ? "-" : "+"}{BRL(v)}
+              <Text
+                style={{ marginTop: theme.space(1.25), fontSize: 18, fontWeight: "900", color: theme.colors.text }}
+              >
+                {isExpense ? "-" : "+"}
+                {BRL(v)}
               </Text>
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={{ marginTop: theme.space(1.75), color: theme.colors.muted }}>Sem lançamentos.</Text>}
+        ListEmptyComponent={
+          <Text style={{ marginTop: theme.space(1.75), color: theme.colors.muted }}>Sem lançamentos.</Text>
+        }
       />
     </View>
   );
 }
-

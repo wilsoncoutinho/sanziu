@@ -1,70 +1,47 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, setToken, getToken, clearToken } from "../lib/api";
-
-type User = { id: string; name: string | null; email: string };
+﻿import React, { createContext, useContext, useEffect, useState } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 type AuthContextData = {
+  session: Session | null;
   user: User | null;
   loading: boolean;
-  signIn: (email: string, pass: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refreshUser() {
-    try {
-      const data = await api("/api/auth/me", { method: "GET" });
-      setUser(data.user ?? null);
-    } catch (error) {
-      console.log("Erro ao carregar usuario", error);
-      throw error;
-    }
-  }
-
-  async function loadStorageData() {
-    try {
-      const token = await getToken();
-      if (token) {
-        await refreshUser();
-      }
-    } catch {
-      await signOut();
-    } finally {
+  useEffect(() => {
+    // 1. Verifica sessão inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
       setLoading(false);
-    }
-  }
-
-  async function signIn(email: string, pass: string) {
-    const data = await api("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password: pass }),
     });
 
-    if (data?.token) {
-      await setToken(data.token);
-      await refreshUser();
-    } else {
-      throw new Error("Token nao veio no login.");
-    }
-  }
+    // 2. Escuta mudanças (Login/Logout/Recuperação de senha)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-  async function signOut() {
-    await clearToken();
-    setUser(null);
-  }
-
-  useEffect(() => {
-    loadStorageData();
+    return () => subscription.unsubscribe();
   }, []);
 
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ session, user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // [IMPORTANTE] Troque pela URL do seu backend na nuvem (Vercel, Render, AWS) para o APK funcionar
-const PROD_URL = "https://seu-backend-producao.com";
+const PROD_URL = "https://sanziu.vercel.app";
 const DEV_URL = "http://192.168.0.5:3000";
 const BASE_URL = __DEV__ ? DEV_URL : PROD_URL;
 const TOKEN_KEY = "@meuappfinancas:token";

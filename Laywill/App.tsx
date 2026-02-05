@@ -17,11 +17,9 @@ import VerifyEmailScreen from "./src/screens/VerifyEmailScreen";
 import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
 import InviteCodeScreen from "./src/screens/InviteCodeScreen";
-import EmailChangeScreen from "./src/screens/EmailChangeScreen";
 import WorkspaceInviteScreen from "./src/screens/WorkspaceInviteScreen";
 import AccountScreen from "./src/screens/AccountScreen";
 import ChangeNameScreen from "./src/screens/ChangeNameScreen";
-import ChangeEmailScreen from "./src/screens/ChangeEmailScreen";
 import ChangePasswordScreen from "./src/screens/ChangePasswordScreen";
 import MainTabs from "./src/navigation/MainTabs";
 
@@ -248,12 +246,10 @@ function Routes() {
               <Stack.Screen name="Main" component={MainTabs} />
               <Stack.Screen name="Account" component={AccountScreen} />
               <Stack.Screen name="ChangeName" component={ChangeNameScreen} />
-              <Stack.Screen name="ChangeEmail" component={ChangeEmailScreen} />
               <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             </>
           )}
           <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-          <Stack.Screen name="EmailChange" component={EmailChangeScreen} />
         </Stack.Navigator>
       </NavigationContainer>
       <FeedbackModal

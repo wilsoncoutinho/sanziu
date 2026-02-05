@@ -229,13 +229,6 @@ export default function MainTabs() {
               }}
             />
             <MenuItem
-              label="Alterar email"
-              onPress={() => {
-                setAccountMenuVisible(false);
-                navigation.navigate("ChangeEmail");
-              }}
-            />
-            <MenuItem
               label="Alterar senha"
               onPress={() => {
                 setAccountMenuVisible(false);

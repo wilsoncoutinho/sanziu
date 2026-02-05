@@ -14,7 +14,7 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
 
     // LOGIN DIRETO PELO SUPABASE
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
@@ -23,6 +23,16 @@ export default function LoginScreen({ navigation }: any) {
 
     if (error) {
       Alert.alert("Erro ao entrar", error.message);
+      return;
+    }
+
+    const isConfirmed = Boolean(
+      data?.user?.email_confirmed_at || (data?.user as any)?.confirmed_at
+    );
+    if (!isConfirmed) {
+      await supabase.auth.signOut();
+      Alert.alert("Confirme seu email", "Enviamos um código para seu email.");
+      navigation.navigate("VerifyEmail", { email: email.trim().toLowerCase() });
     }
     // O AuthContext vai detectar a mudança automaticamente e redirecionar
   }
@@ -87,18 +97,6 @@ export default function LoginScreen({ navigation }: any) {
         style={{ marginTop: 10, alignItems: "center" }}
       >
         <Text style={{ color: theme.colors.text }}>Esqueci a senha</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => navigation.navigate("InviteCode")}
-        style={{ marginTop: 10, alignItems: "center" }}
-      >
-        <Text style={{ color: theme.colors.text }}>Tenho um Convite de Casal</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => navigation.navigate("EmailChange")}
-        style={{ marginTop: 10, alignItems: "center" }}
-      >
-        <Text style={{ color: theme.colors.text }}>Confirmar troca de email</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );

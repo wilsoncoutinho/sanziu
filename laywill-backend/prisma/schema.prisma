@@ -7,7 +7,122 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-        
+
+model User {
+  id                 String                  @id @default(cuid())
+  name               String?
+  email              String                  @unique
+  password           String?
+  emailVerifiedAt    DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  emailVerifications EmailVerificationCode[]
+  passwordResets     PasswordResetToken[]
+  memberships        WorkspaceMember[]
+}
+
+model Workspace {
+  id           String            @id @default(cuid())
+  name         String
+  currency     String            @default("BRL")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  accounts     Account[]
+  categories   Category[]
+  transactions Transaction[]
+  invites      WorkspaceInvite[]
+  members      WorkspaceMember[]
+}
+
+model WorkspaceMember {
+  id          String     @id @default(cuid())
+  role        MemberRole @default(OWNER)
+  createdAt   DateTime   @default(now())
+  userId      String
+  workspaceId String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  name         String
+  type         String        @default("BANK")
+  initialBal   Decimal       @default(0) @db.Decimal(14, 2)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  workspaceId  String
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  name         String
+  type         CategoryType  @default(EXPENSE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  workspaceId  String
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([workspaceId, name, type])
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  type        TransactionType
+  amount      Decimal         @db.Decimal(14, 2)
+  date        DateTime
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  workspaceId String
+  accountId   String
+  categoryId  String?
+  account     Account         @relation(fields: [accountId], references: [id])
+  category    Category?       @relation(fields: [categoryId], references: [id])
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceInvite {
+  id          String     @id @default(cuid())
+  token       String     @unique
+  workspaceId String
+  email       String?
+  role        MemberRole @default(EDITOR)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime   @default(now())
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+}
+
+model EmailVerificationCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
 enum MemberRole {
   OWNER
   EDITOR
@@ -22,135 +137,4 @@ enum CategoryType {
 enum TransactionType {
   EXPENSE
   INCOME
-}
-
-model User {
-  id        String   @id @default(cuid())
-  name      String?
-  email     String   @unique
-  password  String?
-  emailVerifiedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  memberships WorkspaceMember[]
-  emailVerifications EmailVerificationCode[]
-  passwordResets PasswordResetToken[]
-}
-
-model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  currency  String   @default("BRL")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  members      WorkspaceMember[]
-  accounts     Account[]
-  categories   Category[]
-  transactions Transaction[]
-  invites      WorkspaceInvite[]
-}
-
-model WorkspaceMember {
-  id        String     @id @default(cuid())
-  role      MemberRole @default(OWNER)
-  createdAt DateTime   @default(now())
-
-  userId      String
-  workspaceId String
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, workspaceId])
-}
-
-model Account {
-  id         String   @id @default(cuid())
-  name       String
-  type       String   @default("BANK")
-  initialBal Decimal  @default(0) @db.Decimal(14, 2)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  transactions Transaction[]
-}
-
-model Category {
-  id        String       @id @default(cuid())
-  name      String
-  type      CategoryType @default(EXPENSE)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  transactions Transaction[]
-
-  @@unique([workspaceId, name, type])
-}
-
-model Transaction {
-  id          String          @id @default(cuid())
-  type        TransactionType
-  amount      Decimal         @db.Decimal(14, 2)
-  date        DateTime
-  description String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id])
-
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id])
-}
-
-model WorkspaceInvite {
-  id          String   @id @default(cuid())
-  token       String   @unique
-  workspaceId String
-  email       String?
-  role        MemberRole @default(EDITOR)
-  expiresAt   DateTime
-  usedAt      DateTime?
-
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-
-  createdAt   DateTime @default(now())
-}
-
-model EmailVerificationCode {
-  id        String   @id @default(cuid())
-  userId    String
-  codeHash  String
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expiresAt])
-}
-
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expiresAt])
 }

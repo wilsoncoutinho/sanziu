@@ -13,6 +13,7 @@ import StatementScreen from "../screens/StatementScreen";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
 
 const Tab = createBottomTabNavigator();
 const AVATAR_KEY = "@meuappfinancas:avatarUri";
@@ -69,6 +70,21 @@ export default function MainTabs() {
 
     await AsyncStorage.setItem(avatarKeyForUser(user.id), uri);
     setAvatarUri(uri);
+  }
+
+  async function handleDebugToken() {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      showModal("Token", error.message || "Erro ao obter sessao");
+      return;
+    }
+    const token = data.session?.access_token;
+    if (!token) {
+      showModal("Token", "Nenhum token de sessao encontrado.");
+      return;
+    }
+    console.log("[debug.access_token]", token);
+    showModal("Token", "Token enviado para o console do Metro.");
   }
 
   useEffect(() => {
@@ -215,7 +231,7 @@ export default function MainTabs() {
             }}
           >
             <MenuItem
-              label="Conta"
+              label={user?.user_metadata?.full_name || user?.email || "Conta"}
               onPress={() => {
                 setAccountMenuVisible(false);
                 navigation.navigate("Account");
@@ -243,6 +259,13 @@ export default function MainTabs() {
               }}
             />
             <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: theme.space(0.5) }} />
+            <MenuItem
+              label="Debug token"
+              onPress={() => {
+                setAccountMenuVisible(false);
+                handleDebugToken();
+              }}
+            />
             <MenuItem
               label="Alterar foto"
               onPress={() => {

@@ -102,13 +102,16 @@ export async function POST(req: Request) {
 
     if (seed) {
       const defaults: { name: string; type: "EXPENSE" | "INCOME" }[] = [
-        { name: "Lazer", type: "EXPENSE" },
-        { name: "Alimentação", type: "EXPENSE" },
-        { name: "Bebida", type: "EXPENSE" },
-        { name: "Saúde", type: "EXPENSE" },
+        { name: "Restaurante", type: "EXPENSE" },
+        { name: "Mercado", type: "EXPENSE" },
         { name: "Transporte", type: "EXPENSE" },
         { name: "Serviços", type: "EXPENSE" },
-        { name: "Mercado", type: "EXPENSE" },
+        { name: "Lazer", type: "EXPENSE" },
+        { name: "Saúde", type: "EXPENSE" },
+        { name: "Educação", type: "EXPENSE" },
+        { name: "Eletrônicos", type: "EXPENSE" },
+        { name: "Vestuário", type: "EXPENSE" },
+        { name: "Casa", type: "EXPENSE" },
         { name: "Outros", type: "EXPENSE" },
       ];
 

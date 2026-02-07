@@ -49,8 +49,12 @@ export default function StatementScreen({ navigation }: any) {
   async function load() {
     setLoading(true);
     try {
-      const ws = await getCurrentWorkspaceId();
+      const wsResult = await getCurrentWorkspaceId();
+      const ws = wsResult.workspaceId;
       if (!ws) {
+        if (wsResult.error) {
+          console.log("[workspace]", wsResult.stage, wsResult.error);
+        }
         setTxs([]);
         return;
       }

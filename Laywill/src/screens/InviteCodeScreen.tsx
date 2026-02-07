@@ -4,14 +4,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
+import { useAuth } from "../contexts/AuthContext";
+import { getCurrentUserId, setCurrentWorkspaceId } from "../lib/supabaseHelpers";
 
 export default function InviteCodeScreen({ navigation }: any) {
-  const [email, setEmail] = useState("");
+  const { user } = useAuth();
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
   const [loading, setLoading] = useState(false);
-  const [shouldGoToLogin, setShouldGoToLogin] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
     {
       visible: false,
@@ -26,32 +25,54 @@ export default function InviteCodeScreen({ navigation }: any) {
 
   async function handleConfirm() {
     try {
-      if (!email.trim()) return showModal("Erro", "Digite seu email");
-      if (!code.trim()) return showModal("Erro", "Digite o código recebido");
-      if (password.length < 6) return showModal("Erro", "Senha precisa ter pelo menos 6 caracteres");
-      if (password !== password2) return showModal("Erro", "As senhas nao conferem");
+      if (!code.trim()) return showModal("Erro", "Digite o codigo recebido");
+      if (!user) return showModal("Acesso", "Faca login para aceitar o convite.");
       setLoading(true);
 
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token: code.trim(),
-        type: "invite",
-      });
-      if (error) throw error;
+      const token = code.trim();
+      const userId = user?.id || (await getCurrentUserId());
+      if (!userId) throw new Error("Usuario nao autenticado");
 
-      if (data?.session) {
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
+      const { data: invite, error } = await supabase
+        .from("WorkspaceInvite")
+        .select("id, workspaceId, expiresAt, usedAt")
+        .eq("token", token)
+        .maybeSingle();
+
+      if (error || !invite) throw new Error("Convite invalido");
+      if (invite.usedAt) throw new Error("Convite ja usado");
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+        throw new Error("Convite expirado");
       }
 
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) throw updateError;
+      const { data: exists, error: existsErr } = await supabase
+        .from("WorkspaceMember")
+        .select("id")
+        .eq("workspaceId", invite.workspaceId)
+        .eq("userId", userId)
+        .maybeSingle();
+      if (existsErr) throw existsErr;
 
-      setShouldGoToLogin(true);
-      showModal("Convite confirmado", "Sua conta foi ativada. Você já pode entrar.");
+      if (!exists) {
+        const { error: insertErr } = await supabase.from("WorkspaceMember").insert({
+          workspaceId: invite.workspaceId,
+          userId,
+          role: "EDITOR",
+        });
+        if (insertErr) throw insertErr;
+      }
+
+      const { error: updateErr } = await supabase
+        .from("WorkspaceInvite")
+        .update({ usedAt: new Date().toISOString() })
+        .eq("id", invite.id);
+      if (updateErr) throw updateErr;
+
+      await setCurrentWorkspaceId(invite.workspaceId);
+
+      showModal("Convite aceito", "Voce entrou no workspace.");
     } catch (e: any) {
+      console.log("[invite.confirm]", e?.message || e);
       showModal("Falha", e?.message || "Erro");
     } finally {
       setLoading(false);
@@ -71,24 +92,11 @@ export default function InviteCodeScreen({ navigation }: any) {
         Confirmar convite
       </Text>
       <Text style={{ marginTop: theme.space(1), color: theme.colors.muted }}>
-        Digite o email, o código e defina sua senha.
+        Digite o codigo recebido para entrar no workspace.
       </Text>
 
       <View style={{ marginTop: theme.space(2.5) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="email@exemplo.com"
-          placeholderTextColor={theme.colors.muted}
-          style={{ marginTop: theme.space(0.75), ...theme.input }}
-        />
-      </View>
-
-      <View style={{ marginTop: theme.space(1.75) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Código</Text>
+        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Codigo</Text>
         <TextInput
           value={code}
           onChangeText={setCode}
@@ -101,30 +109,6 @@ export default function InviteCodeScreen({ navigation }: any) {
             ...theme.input,
             letterSpacing: 4,
           }}
-        />
-      </View>
-
-      <View style={{ marginTop: theme.space(1.75) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Senha</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="minimo 6 caracteres"
-          placeholderTextColor={theme.colors.muted}
-          style={{ marginTop: theme.space(0.75), ...theme.input }}
-        />
-      </View>
-
-      <View style={{ marginTop: theme.space(1.75) }}>
-        <Text style={{ fontSize: 12, color: theme.colors.muted }}>Confirmar senha</Text>
-        <TextInput
-          value={password2}
-          onChangeText={setPassword2}
-          secureTextEntry
-          placeholder="repita a senha"
-          placeholderTextColor={theme.colors.muted}
-          style={{ marginTop: theme.space(0.75), ...theme.input }}
         />
       </View>
 
@@ -158,10 +142,6 @@ export default function InviteCodeScreen({ navigation }: any) {
         message={modal.message}
         onClose={() => {
           setModal((prev) => ({ ...prev, visible: false }));
-          if (shouldGoToLogin) {
-            setShouldGoToLogin(false);
-            navigation.navigate("Login");
-          }
         }}
       />
     </SafeAreaView>

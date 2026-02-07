@@ -64,9 +64,14 @@ export default function HomeScreen({ navigation }: any) {
   async function load() {
     setLoading(true);
     try {
-      const ws = await getCurrentWorkspaceId();
+      const wsResult = await getCurrentWorkspaceId();
+      const ws = wsResult.workspaceId;
       setWorkspaceId(ws);
       if (!ws) {
+        if (wsResult.error) {
+          console.log("[workspace]", wsResult.stage, wsResult.error);
+          showModal("Workspace", wsResult.error);
+        }
         setSummary({ income: 0, expense: 0, net: 0 });
         return;
       }

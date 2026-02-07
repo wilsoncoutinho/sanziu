@@ -238,7 +238,6 @@ function Routes() {
               <Stack.Screen name="Register" component={RegisterScreen} />
               <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
               <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-              <Stack.Screen name="InviteCode" component={InviteCodeScreen} />
               <Stack.Screen name="WorkspaceInvite" component={WorkspaceInviteScreen} />
             </>
           ) : (
@@ -249,6 +248,7 @@ function Routes() {
               <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             </>
           )}
+          <Stack.Screen name="InviteCode" component={InviteCodeScreen} />
           <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </Stack.Navigator>
       </NavigationContainer>

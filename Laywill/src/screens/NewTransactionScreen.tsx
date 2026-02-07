@@ -72,9 +72,13 @@ export default function NewTransactionScreen({ navigation }: any) {
   async function loadBase() {
     setLoading(true);
     try {
-      const ws = await getCurrentWorkspaceId();
+      const wsResult = await getCurrentWorkspaceId();
+      const ws = wsResult.workspaceId;
       setWorkspaceId(ws);
       if (!ws) {
+        if (wsResult.error) {
+          console.log("[workspace]", wsResult.stage, wsResult.error);
+        }
         setAccounts([]);
         setCategories([]);
         return;
@@ -180,6 +184,7 @@ export default function NewTransactionScreen({ navigation }: any) {
       setDescription("");
       showSaveNotice("Registrado");
     } catch (e: any) {
+      console.log("[transaction.save]", e?.message || e);
       showSaveNotice("Erro ao salvar");
     }
   }

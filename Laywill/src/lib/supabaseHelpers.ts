@@ -1,4 +1,13 @@
-﻿import { supabase } from "./supabase";
+import { supabase } from "./supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const CURRENT_WORKSPACE_KEY = "@meuappfinancas:currentWorkspaceId";
+
+export type WorkspaceResult = {
+  workspaceId: string | null;
+  error?: string;
+  stage?: string;
+};
 
 export async function getCurrentUserId() {
   const { data, error } = await supabase.auth.getUser();
@@ -6,19 +15,20 @@ export async function getCurrentUserId() {
   return data.user?.id ?? null;
 }
 
-export async function getWorkspaceIdForUser(userId: string) {
+export async function getWorkspaceIdForUser(userId: string): Promise<WorkspaceResult> {
   const { data, error } = await supabase
     .from("WorkspaceMember")
     .select("workspaceId")
     .eq("userId", userId)
+    .order("createdAt", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) return null;
-  return data?.workspaceId ?? null;
+  if (error) return { workspaceId: null, error: error.message, stage: "getWorkspaceIdForUser" };
+  return { workspaceId: data?.workspaceId ?? null };
 }
 
-async function createWorkspaceForUser(userId: string) {
+async function createWorkspaceForUser(userId: string): Promise<WorkspaceResult> {
   const { data: userData } = await supabase.auth.getUser();
   const displayName =
     (userData?.user?.user_metadata as any)?.full_name ||
@@ -36,7 +46,13 @@ async function createWorkspaceForUser(userId: string) {
     .select("id")
     .single();
 
-  if (workspaceError || !workspace?.id) return null;
+  if (workspaceError || !workspace?.id) {
+    return {
+      workspaceId: null,
+      error: workspaceError?.message || "Falha ao criar workspace",
+      stage: "createWorkspaceForUser",
+    };
+  }
 
   const { error: memberError } = await supabase.from("WorkspaceMember").insert({
     workspaceId: workspace.id,
@@ -46,16 +62,56 @@ async function createWorkspaceForUser(userId: string) {
 
   if (memberError) {
     const existing = await getWorkspaceIdForUser(userId);
-    return existing ?? workspace.id;
+    if (existing.workspaceId) return existing;
+    return {
+      workspaceId: workspace.id,
+      error: memberError.message,
+      stage: "createWorkspaceForUser.memberInsert",
+    };
   }
 
-  return workspace.id;
+  await AsyncStorage.setItem(CURRENT_WORKSPACE_KEY, workspace.id);
+
+  // Cria uma conta padrão para evitar "Nenhuma conta"
+  const { error: accountError } = await supabase.from("Account").insert({
+    workspaceId: workspace.id,
+    name: "Carteira",
+    type: "WALLET",
+    initialBal: 0,
+  });
+  if (accountError) {
+    return {
+      workspaceId: workspace.id,
+      error: accountError.message,
+      stage: "createWorkspaceForUser.accountInsert",
+    };
+  }
+
+  return { workspaceId: workspace.id };
 }
 
-export async function getCurrentWorkspaceId() {
+export async function getCurrentWorkspaceId(): Promise<WorkspaceResult> {
   const userId = await getCurrentUserId();
-  if (!userId) return null;
+  if (!userId) {
+    return { workspaceId: null, error: "Usuário não autenticado", stage: "getCurrentWorkspaceId" };
+  }
+  const stored = await AsyncStorage.getItem(CURRENT_WORKSPACE_KEY);
+  if (stored) {
+    const { data, error } = await supabase
+      .from("WorkspaceMember")
+      .select("id")
+      .eq("userId", userId)
+      .eq("workspaceId", stored)
+      .maybeSingle();
+    if (!error && data?.id) {
+      return { workspaceId: stored };
+    }
+  }
   const existing = await getWorkspaceIdForUser(userId);
-  if (existing) return existing;
+  if (existing.workspaceId) return existing;
   return createWorkspaceForUser(userId);
+}
+
+export async function setCurrentWorkspaceId(workspaceId: string) {
+  await AsyncStorage.setItem(CURRENT_WORKSPACE_KEY, workspaceId);
 }

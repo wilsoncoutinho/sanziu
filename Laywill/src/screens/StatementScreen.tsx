@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, FlatList, TouchableOpacity } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
-import { getCurrentWorkspaceId } from "../lib/supabaseHelpers";
 import { theme } from "../ui/theme";
 import { Ionicons } from "@expo/vector-icons";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 function toYYYYMM(d: Date) {
   const y = d.getFullYear();
@@ -41,53 +42,56 @@ function BRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function relationName(v: any) {
+  if (Array.isArray(v)) return v[0]?.name ?? "";
+  return v?.name ?? "";
+}
+
+function formatDatePtBr(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("pt-BR");
+}
+
 export default function StatementScreen({ navigation }: any) {
+  const { workspaceId, loading: workspaceLoading } = useWorkspace();
   const [month, setMonth] = useState(toYYYYMM(new Date()));
-  const [loading, setLoading] = useState(true);
-  const [txs, setTxs] = useState<any[]>([]);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const wsResult = await getCurrentWorkspaceId();
-      const ws = wsResult.workspaceId;
-      if (!ws) {
-        if (wsResult.error) {
-          console.log("[workspace]", wsResult.stage, wsResult.error);
-        }
-        setTxs([]);
-        return;
-      }
-
+  const statementQuery = useQuery({
+    queryKey: ["statement", workspaceId, month],
+    enabled: Boolean(workspaceId),
+    staleTime: 30000,
+    queryFn: async () => {
       const { start, end } = monthRange(month);
       const { data, error } = await supabase
         .from("Transaction")
         .select("id, type, amount, date, description, category:Category(name), account:Account(name)")
-        .eq("workspaceId", ws)
+        .eq("workspaceId", workspaceId as string)
         .gte("date", start.toISOString())
         .lt("date", end.toISOString())
         .order("date", { ascending: false });
 
       if (error) throw error;
-      setTxs(data || []);
-    } finally {
-      setLoading(false);
-    }
-  }
+      return data || [];
+    },
+  });
 
   useEffect(() => {
-    const unsub = navigation.addListener("focus", load);
-    load();
+    const unsub = navigation.addListener("focus", () => {
+      statementQuery.refetch();
+    });
     return unsub;
-  }, [navigation, month]);
+  }, [navigation, statementQuery]);
 
-  if (loading) {
+  if (workspaceLoading || statementQuery.isPending) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.bg }}>
         <ActivityIndicator color={theme.colors.primary} />
       </View>
     );
   }
+
+  const txs = statementQuery.data || [];
 
   return (
     <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg }}>
@@ -132,7 +136,7 @@ export default function StatementScreen({ navigation }: any) {
             justifyContent: "center",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Próximo mês"
+          accessibilityLabel="Proximo mês"
         >
           <Ionicons name="chevron-forward" size={18} color={theme.colors.text} />
         </TouchableOpacity>
@@ -146,7 +150,7 @@ export default function StatementScreen({ navigation }: any) {
         renderItem={({ item }) => {
           const v = amountToNumber(item.amount);
           const isExpense = item.type === "EXPENSE";
-          const title = item.category?.name ?? (isExpense ? "Despesa" : "Receita");
+          const title = relationName(item.category) || (isExpense ? "Despesa" : "Receita");
           return (
             <View
               style={{
@@ -158,10 +162,10 @@ export default function StatementScreen({ navigation }: any) {
               }}
             >
               <Text style={{ fontWeight: "800", color: theme.colors.text }}>
-                {title} {item.description ? `— ${item.description}` : ""}
+                {title} {item.description ? `- ${item.description}` : ""}
               </Text>
               <Text style={{ marginTop: theme.space(0.75), color: theme.colors.muted }}>
-                {String(item.date).slice(0, 10)} • {item.account?.name}
+                {formatDatePtBr(String(item.date))} - {relationName(item.account)}
               </Text>
               <Text
                 style={{ marginTop: theme.space(1.25), fontSize: 18, fontWeight: "900", color: theme.colors.text }}

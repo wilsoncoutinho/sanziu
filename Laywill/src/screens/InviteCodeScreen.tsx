@@ -5,10 +5,12 @@ import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { useAuth } from "../contexts/AuthContext";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { getCurrentUserId, setCurrentWorkspaceId } from "../lib/supabaseHelpers";
 
 export default function InviteCodeScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { refreshWorkspace } = useWorkspace();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
@@ -69,6 +71,7 @@ export default function InviteCodeScreen({ navigation }: any) {
       if (updateErr) throw updateErr;
 
       await setCurrentWorkspaceId(invite.workspaceId);
+      await refreshWorkspace();
 
       showModal("Convite aceito", "Voce entrou no workspace.");
     } catch (e: any) {

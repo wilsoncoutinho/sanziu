@@ -4,10 +4,13 @@ import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from 
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext";
+import { WorkspaceProvider, useWorkspace } from "./src/contexts/WorkspaceContext";
 import { supabase } from "./src/lib/supabase";
-import { getCurrentUserId } from "./src/lib/supabaseHelpers";
+import { getCurrentUserId, setCurrentWorkspaceId } from "./src/lib/supabaseHelpers";
+import { queryClient } from "./src/lib/queryClient";
 import { theme } from "./src/ui/theme";
 import { FeedbackModal } from "./src/ui/FeedbackModal";
 
@@ -27,6 +30,25 @@ const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef<any>();
 const PENDING_INVITE_KEY = "@meuappfinancas:pendingInvite";
 
+function toYYYYMM(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function monthRange(yyyyMm: string) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const start = new Date(y, (m || 1) - 1, 1);
+  const end = new Date(y, (m || 1), 1);
+  return { start, end };
+}
+
+function amountToNumber(v: any) {
+  const s = typeof v === "string" ? v : v?.toString?.() ?? String(v ?? "0");
+  const n = Number(String(s).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
 const navigationTheme = {
   ...DefaultTheme,
   colors: {
@@ -41,6 +63,7 @@ const navigationTheme = {
 
 function Routes() {
   const { user, loading } = useAuth();
+  const { workspaceId, refreshWorkspace } = useWorkspace();
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
     visible: false,
     title: "",
@@ -102,6 +125,9 @@ function Routes() {
         .from("WorkspaceInvite")
         .update({ usedAt: new Date().toISOString() })
         .eq("id", invite.id);
+
+      await setCurrentWorkspaceId(invite.workspaceId);
+      await refreshWorkspace();
 
       await AsyncStorage.removeItem(PENDING_INVITE_KEY);
       showModal("Convite aceito", "Você entrou no workspace.");
@@ -189,6 +215,100 @@ function Routes() {
     }
   }, [pendingUrl]);
 
+  useEffect(() => {
+    if (!user || !workspaceId) return;
+    const month = toYYYYMM(new Date());
+    const { start, end } = monthRange(month);
+
+    queryClient.prefetchQuery({
+      queryKey: ["homeSummary", workspaceId, month],
+      staleTime: 30000,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("Transaction")
+          .select("type, amount")
+          .eq("workspaceId", workspaceId)
+          .gte("date", start.toISOString())
+          .lt("date", end.toISOString());
+        if (error) throw error;
+
+        let income = 0;
+        let expense = 0;
+        for (const t of data || []) {
+          const v = amountToNumber((t as any).amount);
+          if ((t as any).type === "INCOME") income += v;
+          else expense += v;
+        }
+        return { income, expense, net: income - expense };
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ["statement", workspaceId, month],
+      staleTime: 30000,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("Transaction")
+          .select("id, type, amount, date, description, category:Category(name), account:Account(name)")
+          .eq("workspaceId", workspaceId)
+          .gte("date", start.toISOString())
+          .lt("date", end.toISOString())
+          .order("date", { ascending: false });
+        if (error) throw error;
+        return data || [];
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ["accounts", workspaceId],
+      staleTime: 60000,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("Account")
+          .select("id, name, type")
+          .eq("workspaceId", workspaceId);
+        if (error) throw error;
+        return data || [];
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ["categories", workspaceId],
+      staleTime: 60000,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("Category")
+          .select("id, name, type")
+          .eq("workspaceId", workspaceId);
+        if (error) throw error;
+        return data || [];
+      },
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ["categoryUsage", workspaceId, month],
+      staleTime: 60000,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("Transaction")
+          .select("categoryId")
+          .eq("workspaceId", workspaceId)
+          .gte("date", start.toISOString())
+          .lt("date", end.toISOString())
+          .not("categoryId", "is", null);
+        if (error) throw error;
+
+        const usageMap = new Map<string, number>();
+        for (const t of data || []) {
+          const id = (t as any).categoryId as string | null;
+          if (!id) continue;
+          usageMap.set(id, (usageMap.get(id) || 0) + 1);
+        }
+        return usageMap;
+      },
+    });
+  }, [user, workspaceId]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.bg }}>
@@ -264,8 +384,12 @@ function Routes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Routes />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <WorkspaceProvider>
+          <Routes />
+        </WorkspaceProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

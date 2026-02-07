@@ -5,6 +5,20 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserIdFromRequest, getWorkspaceIdForUser } from "@/lib/auth";
 
+const DEFAULT_EXPENSE_CATEGORIES = [
+  "Lanches",
+  "Mercado",
+  "Transporte",
+  "Serviços",
+  "Lazer",
+  "Saúde",
+  "Educação",
+  "Eletrônicos",
+  "Vestuário",
+  "Casa",
+  "Outros",
+] as const;
+
 function parseMonth(monthStr: string) {
   if (!/^\d{4}-\d{2}$/.test(monthStr)) return null;
 
@@ -45,7 +59,6 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     });
-
     if (!month) {
       return NextResponse.json({ categories }, { status: 200 });
     }
@@ -101,21 +114,11 @@ export async function POST(req: Request) {
     const seed = body?.seed === true;
 
     if (seed) {
-      const defaults: { name: string; type: "EXPENSE" | "INCOME" }[] = [
-        { name: "Restaurante", type: "EXPENSE" },
-        { name: "Mercado", type: "EXPENSE" },
-        { name: "Transporte", type: "EXPENSE" },
-        { name: "Serviços", type: "EXPENSE" },
-        { name: "Lazer", type: "EXPENSE" },
-        { name: "Saúde", type: "EXPENSE" },
-        { name: "Educação", type: "EXPENSE" },
-        { name: "Eletrônicos", type: "EXPENSE" },
-        { name: "Vestuário", type: "EXPENSE" },
-        { name: "Casa", type: "EXPENSE" },
-        { name: "Outros", type: "EXPENSE" },
-      ];
-
-      const data = defaults.map((c) => ({ ...c, workspaceId }));
+      const data = DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
+        name,
+        type: "EXPENSE" as const,
+        workspaceId,
+      }));
       const result = await prisma.category.createMany({
         data,
         skipDuplicates: true,

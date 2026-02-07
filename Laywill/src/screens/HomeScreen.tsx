@@ -1,7 +1,7 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
-import { getCurrentWorkspaceId } from "../lib/supabaseHelpers";
 import { theme } from "../ui/theme";
 import { Card } from "../ui/Card";
 import { H1, Muted, Money } from "../ui/typography";
@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { FeedbackModal } from "../ui/FeedbackModal";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 function toYYYYMM(d: Date) {
   const y = d.getFullYear();
@@ -33,57 +34,42 @@ function BRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function monthLabel(yyyyMm: string) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const date = new Date(y, (m || 1) - 1, 1);
+  return date.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
+}
+
 function createInviteCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 export default function HomeScreen({ navigation }: any) {
+  const { workspaceId, loading: workspaceLoading, refreshWorkspace } = useWorkspace();
   const [month] = useState(toYYYYMM(new Date()));
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<{ income: number; expense: number; net: number }>(
-    {
-      income: 0,
-      expense: 0,
-      net: 0,
-    }
-  );
-  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>(
-    {
-      visible: false,
-      title: "",
-      message: "",
-    }
-  );
+  const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
   const [inviteCode, setInviteCode] = useState("");
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   function showModal(title: string, message?: string) {
     setModal({ visible: true, title, message });
   }
 
-  async function load() {
-    setLoading(true);
-    try {
-      const wsResult = await getCurrentWorkspaceId();
-      const ws = wsResult.workspaceId;
-      setWorkspaceId(ws);
-      if (!ws) {
-        if (wsResult.error) {
-          console.log("[workspace]", wsResult.stage, wsResult.error);
-          showModal("Workspace", wsResult.error);
-        }
-        setSummary({ income: 0, expense: 0, net: 0 });
-        return;
-      }
-
+  const summaryQuery = useQuery({
+    queryKey: ["homeSummary", workspaceId, month],
+    enabled: Boolean(workspaceId),
+    staleTime: 30000,
+    queryFn: async () => {
       const { start, end } = monthRange(month);
       const { data, error } = await supabase
         .from("Transaction")
         .select("type, amount")
-        .eq("workspaceId", ws)
+        .eq("workspaceId", workspaceId as string)
         .gte("date", start.toISOString())
         .lt("date", end.toISOString());
-
       if (error) throw error;
 
       let income = 0;
@@ -94,20 +80,24 @@ export default function HomeScreen({ navigation }: any) {
         else expense += v;
       }
 
-      setSummary({ income, expense, net: income - expense });
-    } catch (e: any) {
-      showModal("Falha", e?.message || "Erro");
-      setSummary({ income: 0, expense: 0, net: 0 });
-    } finally {
-      setLoading(false);
-    }
-  }
+      return { income, expense, net: income - expense };
+    },
+  });
 
   useEffect(() => {
-    const unsub = navigation.addListener("focus", load);
-    load();
+    const unsub = navigation.addListener("focus", () => {
+      summaryQuery.refetch();
+    });
     return unsub;
-  }, [navigation]);
+  }, [navigation, summaryQuery]);
+
+  const summary = summaryQuery.data || { income: 0, expense: 0, net: 0 };
+
+  useEffect(() => {
+    if (!summaryQuery.error) return;
+    const e = summaryQuery.error as any;
+    showModal("Falha", e?.message || "Erro");
+  }, [summaryQuery.error]);
 
   const netLabel = useMemo(
     () => (summary.net >= 0 ? "Saldo positivo" : "Saldo negativo"),
@@ -117,10 +107,10 @@ export default function HomeScreen({ navigation }: any) {
   return (
     <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg }}>
       <Text style={H1}>Resumo do mês</Text>
-      <Text style={[Muted, { marginTop: 6 }]}>{month}</Text>
+      <Text style={[Muted, { marginTop: 6 }]}>{monthLabel(month)}</Text>
       <Text style={[Muted, { marginTop: 4 }]}>{netLabel}</Text>
 
-      {loading ? (
+      {workspaceLoading || summaryQuery.isPending ? (
         <View style={{ marginTop: theme.space(2.5) }}>
           <ActivityIndicator color={theme.colors.primary} />
         </View>
@@ -132,13 +122,13 @@ export default function HomeScreen({ navigation }: any) {
 
             <View style={{ flexDirection: "row", gap: 12, marginTop: theme.space(2) }}>
               <MiniStat icon="arrow-up" label="Entradas" value={BRL(summary.income)} />
-              <MiniStat icon="arrow-down" label="Saídas" value={BRL(summary.expense)} />
+              <MiniStat icon="arrow-down" label="Saidas" value={BRL(summary.expense)} />
             </View>
           </Card>
 
           <TouchableOpacity
-            onPress={async () => {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
               navigation.navigate("Extrato");
             }}
             style={{ marginTop: theme.space(1.25) }}
@@ -172,22 +162,24 @@ export default function HomeScreen({ navigation }: any) {
 
           <TouchableOpacity
             onPress={async () => {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (!workspaceId) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              let activeWorkspace = workspaceId;
+              if (!activeWorkspace) {
+                activeWorkspace = await refreshWorkspace();
+              }
+              if (!activeWorkspace) {
                 showModal("Workspace", "Nenhum workspace encontrado.");
                 return;
               }
 
               const token = createInviteCode();
               const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-              const { error } = await supabase
-                .from("WorkspaceInvite")
-                .insert({
-                  token,
-                  workspaceId,
-                  role: "EDITOR",
-                  expiresAt,
-                });
+              const { error } = await supabase.from("WorkspaceInvite").insert({
+                token,
+                workspaceId: activeWorkspace,
+                role: "EDITOR",
+                expiresAt,
+              });
 
               if (error) {
                 showModal("Falha", error.message || "Erro ao criar convite");
@@ -195,7 +187,7 @@ export default function HomeScreen({ navigation }: any) {
               }
 
               setInviteCode(token);
-              showModal("Convite criado", "Copie e envie este código:\n\n" + token);
+              showModal("Convite criado", "Copie e envie este codigo:\n\n" + token);
             }}
             style={{ marginTop: theme.space(1.25) }}
           >
@@ -231,7 +223,7 @@ export default function HomeScreen({ navigation }: any) {
         visible={modal.visible}
         title={modal.title}
         message={modal.message}
-        actionLabel={inviteCode ? "Copiar código" : undefined}
+        actionLabel={inviteCode ? "Copiar codigo" : undefined}
         onAction={
           inviteCode
             ? async () => {

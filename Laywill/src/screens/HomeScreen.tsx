@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
+
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { supabase } from "../lib/supabase";
 import { theme } from "../ui/theme";
-import { Card } from "../ui/Card";
-import { H1, Muted, Money } from "../ui/typography";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import * as Clipboard from "expo-clipboard";
 import { FeedbackModal } from "../ui/FeedbackModal";
-import { useWorkspace } from "../contexts/WorkspaceContext";
+import { Card } from "../ui/Card";
+import { H1, Money, Muted } from "../ui/typography";
 
 function toYYYYMM(d: Date) {
   const y = d.getFullYear();
@@ -20,7 +21,7 @@ function toYYYYMM(d: Date) {
 function monthRange(yyyyMm: string) {
   const [y, m] = yyyyMm.split("-").map((v) => Number(v));
   const start = new Date(y, (m || 1) - 1, 1);
-  const end = new Date(y, (m || 1), 1);
+  const end = new Date(y, m || 1, 1);
   return { start, end };
 }
 
@@ -91,134 +92,140 @@ export default function HomeScreen({ navigation }: any) {
     return unsub;
   }, [navigation, summaryQuery]);
 
-  const summary = summaryQuery.data || { income: 0, expense: 0, net: 0 };
-
   useEffect(() => {
     if (!summaryQuery.error) return;
     const e = summaryQuery.error as any;
     showModal("Falha", e?.message || "Erro");
   }, [summaryQuery.error]);
 
+  const summary = summaryQuery.data || { income: 0, expense: 0, net: 0 };
   const netLabel = useMemo(
     () => (summary.net >= 0 ? "Saldo positivo" : "Saldo negativo"),
     [summary.net]
   );
 
   return (
-    <View style={{ flex: 1, padding: theme.space(2.5), backgroundColor: theme.colors.bg }}>
-      <Text style={H1}>Resumo do mês</Text>
-      <Text style={[Muted, { marginTop: 6 }]}>{monthLabel(month)}</Text>
-      <Text style={[Muted, { marginTop: 4 }]}>{netLabel}</Text>
+    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: theme.space(2.5),
+          paddingBottom: theme.space(5),
+        }}
+      >
+        <Text style={H1}>Resumo do mes</Text>
+        <Text style={[Muted, { marginTop: 6 }]}>{monthLabel(month)}</Text>
+        <Text style={[Muted, { marginTop: 4 }]}>{netLabel}</Text>
 
-      {workspaceLoading || summaryQuery.isPending ? (
-        <View style={{ marginTop: theme.space(2.5) }}>
-          <ActivityIndicator color={theme.colors.primary} />
-        </View>
-      ) : (
-        <>
-          <Card style={{ marginTop: theme.space(2) }}>
-            <Text style={Muted}>Saldo do mês</Text>
-            <Text style={[Money, { marginTop: 6 }]}>{BRL(summary.net)}</Text>
+        {workspaceLoading || summaryQuery.isPending ? (
+          <View style={{ marginTop: theme.space(2.5) }}>
+            <ActivityIndicator color={theme.colors.primary} />
+          </View>
+        ) : (
+          <>
+            <Card style={{ marginTop: theme.space(2) }}>
+              <Text style={Muted}>Saldo do mes</Text>
+              <Text style={[Money, { marginTop: 6 }]}>{BRL(summary.net)}</Text>
 
-            <View style={{ flexDirection: "row", gap: 12, marginTop: theme.space(2) }}>
-              <MiniStat icon="arrow-up" label="Entradas" value={BRL(summary.income)} />
-              <MiniStat icon="arrow-down" label="Saidas" value={BRL(summary.expense)} />
-            </View>
-          </Card>
+              <View style={{ flexDirection: "row", gap: 12, marginTop: theme.space(2) }}>
+                <MiniStat icon="arrow-up" label="Entradas" value={BRL(summary.income)} />
+                <MiniStat icon="arrow-down" label="Saidas" value={BRL(summary.expense)} />
+              </View>
+            </Card>
 
-          <TouchableOpacity
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              navigation.navigate("Extrato");
-            }}
-            style={{ marginTop: theme.space(1.25) }}
-          >
-            <Card
-              style={{
-                padding: theme.space(1.75),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.space(1.5),
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                navigation.navigate("Extrato");
               }}
+              style={{ marginTop: theme.space(1.25) }}
             >
-              <View
+              <Card
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.bg,
+                  padding: theme.space(1.75),
+                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "center",
+                  gap: theme.space(1.5),
                 }}
               >
-                <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
-              </View>
-              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
-                Ver extrato do mês
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
-            </Card>
-          </TouchableOpacity>
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: theme.colors.bg,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
+                </View>
+                <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
+                  Ver extrato do mes
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+              </Card>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={async () => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              let activeWorkspace = workspaceId;
-              if (!activeWorkspace) {
-                activeWorkspace = await refreshWorkspace();
-              }
-              if (!activeWorkspace) {
-                showModal("Workspace", "Nenhum workspace encontrado.");
-                return;
-              }
+            <TouchableOpacity
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                let activeWorkspace = workspaceId;
+                if (!activeWorkspace) activeWorkspace = await refreshWorkspace();
+                if (!activeWorkspace) {
+                  showModal("Workspace", "Nenhum workspace encontrado.");
+                  return;
+                }
 
-              const token = createInviteCode();
-              const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-              const { error } = await supabase.from("WorkspaceInvite").insert({
-                token,
-                workspaceId: activeWorkspace,
-                role: "EDITOR",
-                expiresAt,
-              });
+                const token = createInviteCode();
+                const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+                const { error } = await supabase.from("WorkspaceInvite").insert({
+                  token,
+                  workspaceId: activeWorkspace,
+                  role: "EDITOR",
+                  expiresAt,
+                });
 
-              if (error) {
-                showModal("Falha", error.message || "Erro ao criar convite");
-                return;
-              }
+                if (error) {
+                  showModal("Falha", error.message || "Erro ao criar convite");
+                  return;
+                }
 
-              setInviteCode(token);
-              showModal("Convite criado", "Copie e envie este codigo:\n\n" + token);
-            }}
-            style={{ marginTop: theme.space(1.25) }}
-          >
-            <Card
-              style={{
-                padding: theme.space(1.75),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.space(1.5),
+                setInviteCode(token);
+                showModal("Convite criado", "Copie e envie este codigo:\n\n" + token);
               }}
+              style={{ marginTop: theme.space(1.25) }}
             >
-              <View
+              <Card
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.bg,
+                  padding: theme.space(1.75),
+                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "center",
+                  gap: theme.space(1.5),
                 }}
               >
-                <Ionicons name="person-add-outline" size={18} color={theme.colors.primary} />
-              </View>
-              <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
-                Convidar esposa
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
-            </Card>
-          </TouchableOpacity>
-        </>
-      )}
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: theme.colors.bg,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="person-add-outline" size={18} color={theme.colors.primary} />
+                </View>
+                <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
+                  Convidar pessoa
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+              </Card>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+
       <FeedbackModal
         visible={modal.visible}
         title={modal.title}

@@ -6,6 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HomeScreen from "../screens/HomeScreen";
 import NewTransactionScreen from "../screens/NewTransactionScreen";
@@ -19,6 +20,7 @@ const AVATAR_KEY = "@meuappfinancas:avatarUri";
 
 export default function MainTabs() {
   const { user, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [accountMenuVisible, setAccountMenuVisible] = useState(false);
@@ -128,9 +130,13 @@ export default function MainTabs() {
           tabBarStyle: {
             backgroundColor: theme.colors.bg,
             borderTopColor: theme.colors.border,
-            height: 64,
-            paddingBottom: 10,
+            borderTopWidth: 1,
+            height: 64 + Math.max(insets.bottom, 8),
+            paddingBottom: Math.max(insets.bottom, 10),
+            paddingTop: 8,
           },
+          tabBarItemStyle: { paddingVertical: 2 },
+          tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: "rgba(234,240,255,0.45)",
         }}
@@ -165,7 +171,7 @@ export default function MainTabs() {
                       height: 64,
                       borderRadius: 32,
                       backgroundColor: theme.colors.primary,
-                      marginTop: -22,
+                      marginTop: -16,
                       shadowColor: "#000",
                       shadowOpacity: 0.2,
                       shadowRadius: 8,
@@ -236,7 +242,7 @@ export default function MainTabs() {
               }}
             />
             <MenuItem
-              label="Tenho um convite de casal"
+              label="Tenho um convite"
               onPress={() => {
                 setAccountMenuVisible(false);
                 navigation.navigate("InviteCode");

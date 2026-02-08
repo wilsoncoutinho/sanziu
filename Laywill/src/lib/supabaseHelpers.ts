@@ -2,12 +2,18 @@ import { supabase } from "./supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CURRENT_WORKSPACE_KEY = "@meuappfinancas:currentWorkspaceId";
+const MEMBER_INSERT_MAX_ATTEMPTS = 4;
+const MEMBER_INSERT_RETRY_MS = 600;
 
 export type WorkspaceResult = {
   workspaceId: string | null;
   error?: string;
   stage?: string;
 };
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function getCurrentUserId() {
   const { data, error } = await supabase.auth.getUser();
@@ -54,17 +60,30 @@ async function createWorkspaceForUser(userId: string): Promise<WorkspaceResult> 
     };
   }
 
-  const { error: memberError } = await supabase.from("WorkspaceMember").insert({
-    workspaceId: workspace.id,
-    userId,
-    role: "OWNER",
-  });
+  let memberError: { message: string } | null = null;
+  for (let attempt = 1; attempt <= MEMBER_INSERT_MAX_ATTEMPTS; attempt++) {
+    const { error } = await supabase.from("WorkspaceMember").insert({
+      workspaceId: workspace.id,
+      userId,
+      role: "OWNER",
+    });
+
+    if (!error) {
+      memberError = null;
+      break;
+    }
+
+    memberError = { message: error.message };
+    if (attempt < MEMBER_INSERT_MAX_ATTEMPTS) {
+      await delay(MEMBER_INSERT_RETRY_MS);
+    }
+  }
 
   if (memberError) {
     const existing = await getWorkspaceIdForUser(userId);
     if (existing.workspaceId) return existing;
     return {
-      workspaceId: workspace.id,
+      workspaceId: null,
       error: memberError.message,
       stage: "createWorkspaceForUser.memberInsert",
     };
@@ -109,7 +128,12 @@ export async function getCurrentWorkspaceId(): Promise<WorkspaceResult> {
   }
   const existing = await getWorkspaceIdForUser(userId);
   if (existing.workspaceId) return existing;
-  return createWorkspaceForUser(userId);
+  const created = await createWorkspaceForUser(userId);
+  if (created.workspaceId) return created;
+
+  const retry = await getWorkspaceIdForUser(userId);
+  if (retry.workspaceId) return retry;
+  return created;
 }
 
 export async function setCurrentWorkspaceId(workspaceId: string) {

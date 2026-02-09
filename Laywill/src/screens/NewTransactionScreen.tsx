@@ -391,9 +391,13 @@ export default function NewTransactionScreen({ navigation }: any) {
                       setCategoryModalVisible(false);
                     }}
                     style={{
+                      backgroundColor: active ? "#1A2440" : theme.colors.card,
+                      borderRadius: theme.radius.input,
+                      borderWidth: 1,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                      paddingHorizontal: theme.space(1.5),
                       paddingVertical: theme.space(1.5),
-                      borderBottomWidth: 1,
-                      borderBottomColor: theme.colors.border,
+                      marginBottom: theme.space(1),
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
@@ -409,9 +413,9 @@ export default function NewTransactionScreen({ navigation }: any) {
                             paddingHorizontal: theme.space(1),
                             paddingVertical: theme.space(0.25),
                             borderRadius: theme.radius.pill,
-                            backgroundColor: "rgba(255,255,255,0.06)",
+                            backgroundColor: "#0F1628",
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.08)",
+                            borderColor: theme.colors.border,
                           }}
                         >
                           <Text style={{ fontSize: 11, color: theme.colors.muted }}>

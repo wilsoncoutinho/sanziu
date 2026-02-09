@@ -1,11 +1,11 @@
 export const theme = {
   colors: {
-    bg: "#0B0F1A",          // fundo bem escuro
-    card: "#121A2A",        // card escuro “premium”
-    text: "#EAF0FF",        // texto claro
+    bg: "#0B0F1A",
+    card: "#121A2A",
+    text: "#EAF0FF",
     muted: "rgba(234,240,255,0.65)",
-    border: "rgba(255,255,255,0.10)",
-    primary: "#7C3AED",     // roxo “premium”
+    border: "rgba(124,58,237,0.45)",
+    primary: "#7C3AED",
     danger: "#F87171",
     success: "#34D399",
   },
@@ -19,7 +19,7 @@ export const theme = {
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(124,58,237,0.45)",
     backgroundColor: "#121A2A",
     color: "#EAF0FF",
   },

@@ -14,15 +14,19 @@ import StatementScreen from "../screens/StatementScreen";
 import { theme } from "../ui/theme";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { useAuth } from "../contexts/AuthContext";
+import { useWorkspace } from "../contexts/WorkspaceContext";
+import { supabase } from "../lib/supabase";
 
 const Tab = createBottomTabNavigator();
 const AVATAR_KEY = "@meuappfinancas:avatarUri";
 
 export default function MainTabs() {
   const { user, signOut } = useAuth();
+  const { workspaceId } = useWorkspace();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [homeTitle, setHomeTitle] = useState("Home");
   const [accountMenuVisible, setAccountMenuVisible] = useState(false);
   const [modal, setModal] = useState<{ visible: boolean; title: string; message?: string }>({
     visible: false,
@@ -76,6 +80,65 @@ export default function MainTabs() {
   useEffect(() => {
     loadAvatarForUser(user?.id);
   }, [user?.id]);
+
+  useEffect(() => {
+    async function loadHomeTitle() {
+      if (!workspaceId || !user?.id) {
+        setHomeTitle("Home");
+        return;
+      }
+
+      const currentUserName =
+        (user.user_metadata as any)?.full_name ||
+        user.email?.split("@")[0] ||
+        "Conta";
+
+      const { data: members, error: membersError } = await supabase
+        .from("WorkspaceMember")
+        .select("userId")
+        .eq("workspaceId", workspaceId);
+
+      if (membersError || !members?.length) {
+        setHomeTitle(currentUserName);
+        return;
+      }
+
+      const memberUserIds = Array.from(
+        new Set((members || []).map((m: any) => String(m.userId)).filter(Boolean))
+      );
+
+      const { data: usersData, error: usersError } = await supabase
+        .from("User")
+        .select("id, name, email")
+        .in("id", memberUserIds);
+
+      if (usersError || !usersData?.length) {
+        setHomeTitle(currentUserName);
+        return;
+      }
+
+      const byId = new Map(
+        usersData.map((u: any) => [
+          u.id,
+          String(u.name || "").trim() || String(u.email || "").split("@")[0] || "Conta",
+        ])
+      );
+
+      const current = byId.get(user.id) || currentUserName;
+      const others = memberUserIds
+        .filter((id) => id !== user.id)
+        .map((id) => byId.get(id))
+        .filter(Boolean) as string[];
+
+      if (others.length > 0) {
+        setHomeTitle(`${current} & ${others[0]}`);
+      } else {
+        setHomeTitle(current);
+      }
+    }
+
+    loadHomeTitle().catch(() => setHomeTitle("Home"));
+  }, [workspaceId, user?.id, user?.email, (user?.user_metadata as any)?.full_name]);
 
   return (
     <>
@@ -144,7 +207,11 @@ export default function MainTabs() {
         <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
+          options={{
+            title: homeTitle,
+            tabBarLabel: "Home",
+            tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} />,
+          }}
         />
         <Tab.Screen
           name="Lançar"
@@ -216,41 +283,46 @@ export default function MainTabs() {
               borderRadius: theme.radius.card,
               borderWidth: 1,
               borderColor: theme.colors.border,
-              paddingVertical: theme.space(1),
-              minWidth: 220,
+              padding: theme.space(1),
+              minWidth: 240,
+              shadowColor: "#000",
+              shadowOpacity: 0.28,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 8,
             }}
           >
+            <Text
+              style={{
+                color: theme.colors.muted,
+                fontSize: 12,
+                fontWeight: "700",
+                letterSpacing: 0.4,
+                paddingHorizontal: theme.space(1),
+                paddingBottom: theme.space(0.75),
+              }}
+            >
+              Conta
+            </Text>
             <MenuItem
-              label={user?.user_metadata?.full_name || user?.email || "Conta"}
+              label="Minha conta"
+              icon="person-outline"
               onPress={() => {
                 setAccountMenuVisible(false);
                 navigation.navigate("Account");
               }}
             />
             <MenuItem
-              label="Alterar nome"
-              onPress={() => {
-                setAccountMenuVisible(false);
-                navigation.navigate("ChangeName");
-              }}
-            />
-            <MenuItem
-              label="Alterar senha"
-              onPress={() => {
-                setAccountMenuVisible(false);
-                navigation.navigate("ChangePassword");
-              }}
-            />
-            <MenuItem
               label="Tenho um convite"
+              icon="gift-outline"
               onPress={() => {
                 setAccountMenuVisible(false);
                 navigation.navigate("InviteCode");
               }}
             />
-            <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: theme.space(0.5) }} />
             <MenuItem
               label="Alterar foto"
+              icon="image-outline"
               onPress={() => {
                 setAccountMenuVisible(false);
                 handlePickAvatar();
@@ -269,16 +341,34 @@ export default function MainTabs() {
   );
 }
 
-function MenuItem({ label, onPress }: { label: string; onPress: () => void }) {
+function MenuItem({
+  label,
+  onPress,
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
   return (
     <TouchableOpacity
       onPress={onPress}
       style={{
-        paddingVertical: theme.space(1.25),
-        paddingHorizontal: theme.space(2),
+        flexDirection: "row",
+        alignItems: "center",
+        gap: theme.space(1),
+        paddingVertical: theme.space(1.1),
+        paddingHorizontal: theme.space(1.25),
+        borderRadius: theme.radius.input,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: "rgba(124,58,237,0.12)",
+        marginBottom: theme.space(0.75),
       }}
     >
-      <Text style={{ color: theme.colors.text, fontWeight: "700" }}>{label}</Text>
+      <Ionicons name={icon} size={16} color={theme.colors.text} />
+      <Text style={{ color: theme.colors.text, fontWeight: "700", flex: 1 }}>{label}</Text>
+      <Ionicons name="chevron-forward" size={14} color={theme.colors.muted} />
     </TouchableOpacity>
   );
 }

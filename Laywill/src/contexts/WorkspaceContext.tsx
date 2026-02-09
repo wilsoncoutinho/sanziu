@@ -27,7 +27,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     setLoading(true);
     const wsResult = await getCurrentWorkspaceId();
-    if (!wsResult.workspaceId && wsResult.error) {
+    const isExpectedNoAuth =
+      wsResult.stage === "getCurrentWorkspaceId" &&
+      wsResult.error?.toLowerCase().includes("autenticado");
+    if (!wsResult.workspaceId && wsResult.error && !isExpectedNoAuth) {
       console.log("[workspace]", wsResult.stage, wsResult.error);
     }
     setWorkspaceId(wsResult.workspaceId);

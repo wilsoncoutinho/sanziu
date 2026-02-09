@@ -30,6 +30,12 @@ function amountToNumber(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function randomAmountPlaceholder() {
+  const raw = Math.random() * 90 + 10; // 10.00 .. 100.00
+  const value = Math.round(raw * 100) / 100;
+  return `Ex: ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function NewTransactionScreen({ navigation }: any) {
   const queryClient = useQueryClient();
   const { workspaceId, loading: workspaceLoading } = useWorkspace();
@@ -39,6 +45,7 @@ export default function NewTransactionScreen({ navigation }: any) {
   const [accountId, setAccountId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
+  const [amountPlaceholder, setAmountPlaceholder] = useState(randomAmountPlaceholder);
   const [description, setDescription] = useState("");
   const [saveNotice, setSaveNotice] = useState<{ visible: boolean; title: string }>({
     visible: false,
@@ -128,6 +135,7 @@ export default function NewTransactionScreen({ navigation }: any) {
 
   useEffect(() => {
     const unsub = navigation.addListener("focus", () => {
+      setAmountPlaceholder(randomAmountPlaceholder());
       accountsQuery.refetch();
       categoriesQuery.refetch();
       usageQuery.refetch();
@@ -247,7 +255,7 @@ export default function NewTransactionScreen({ navigation }: any) {
           value={amount}
           onChangeText={setAmount}
           keyboardType="decimal-pad"
-          placeholder="Ex: 57,90"
+          placeholder={amountPlaceholder}
           placeholderTextColor={theme.colors.muted}
           style={{ marginTop: theme.space(1), ...Money }}
         />
@@ -286,7 +294,7 @@ export default function NewTransactionScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <Text style={{ marginTop: theme.space(1.5), fontSize: 12, color: theme.colors.muted }}>
-            Descricao (opcional)
+            Descrição (opcional)
           </Text>
           <TextInput
             value={description}
@@ -309,11 +317,11 @@ export default function NewTransactionScreen({ navigation }: any) {
             borderColor: theme.colors.border,
           }}
         >
-          <Text style={{ fontSize: 12, color: theme.colors.muted }}>Descricao (opcional)</Text>
+          <Text style={{ fontSize: 12, color: theme.colors.muted }}>Descrição (opcional)</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
-            placeholder="Ex: Salario"
+            placeholder="Ex: Salário"
             placeholderTextColor={theme.colors.muted}
             style={{ marginTop: theme.space(0.75), ...theme.input }}
           />
@@ -442,4 +450,3 @@ function Pill({ label, active, onPress }: { label: string; active: boolean; onPr
     </TouchableOpacity>
   );
 }
-

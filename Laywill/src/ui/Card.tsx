@@ -8,11 +8,11 @@ export function Card(props: ViewProps) {
       {...props}
       style={[
         {
-          backgroundColor: theme.colors.card,
+          backgroundColor: "rgba(124,58,237,0.18)",
           borderRadius: theme.radius.card,
           padding: theme.space(2),
           borderWidth: 1,
-          borderColor: theme.colors.border,
+          borderColor: "rgba(124,58,237,0.45)",
         },
         props.style,
       ]}

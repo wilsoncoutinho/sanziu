@@ -18,6 +18,13 @@ function toYYYYMM(d: Date) {
   return `${y}-${m}`;
 }
 
+function shiftMonth(yyyyMm: string, delta: number) {
+  const [y, m] = yyyyMm.split("-").map((v) => Number(v));
+  const base = new Date(y, (m || 1) - 1, 1);
+  base.setMonth(base.getMonth() + delta);
+  return toYYYYMM(base);
+}
+
 function monthRange(yyyyMm: string) {
   const [y, m] = yyyyMm.split("-").map((v) => Number(v));
   const start = new Date(y, (m || 1) - 1, 1);
@@ -38,11 +45,19 @@ function BRL(v: number) {
 function monthLabel(yyyyMm: string) {
   const [y, m] = yyyyMm.split("-").map((v) => Number(v));
   const date = new Date(y, (m || 1) - 1, 1);
-  return date.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
+  const label = date
+    .toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+    .replace(" de ", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function createInviteCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function pickVariant(options: string[], seed: number) {
+  if (options.length === 0) return "";
+  return options[Math.abs(seed) % options.length];
 }
 
 export default function HomeScreen({ navigation }: any) {
@@ -85,12 +100,64 @@ export default function HomeScreen({ navigation }: any) {
     },
   });
 
+  const insightQuery = useQuery({
+    queryKey: ["homeInsight", workspaceId, month],
+    enabled: Boolean(workspaceId),
+    staleTime: 30000,
+    queryFn: async () => {
+      const prevMonth = shiftMonth(month, -1);
+      const { start: prevStart } = monthRange(prevMonth);
+      const { start: currStart, end: currEnd } = monthRange(month);
+
+      const { data, error } = await supabase
+        .from("Transaction")
+        .select("type, amount, date, category:Category(name)")
+        .eq("workspaceId", workspaceId as string)
+        .gte("date", prevStart.toISOString())
+        .lt("date", currEnd.toISOString());
+
+      if (error) throw error;
+
+      let currentExpense = 0;
+      let previousExpense = 0;
+      const categoryTotals = new Map<string, number>();
+
+      for (const t of data || []) {
+        if ((t as any).type !== "EXPENSE") continue;
+        const amount = amountToNumber((t as any).amount);
+        const txDate = new Date((t as any).date);
+        const isCurrentMonth = txDate >= currStart && txDate < currEnd;
+        if (isCurrentMonth) {
+          currentExpense += amount;
+          const category = (Array.isArray((t as any).category) ? (t as any).category[0] : (t as any).category)
+            ?.name;
+          const key = category || "Sem categoria";
+          categoryTotals.set(key, (categoryTotals.get(key) || 0) + amount);
+        } else {
+          previousExpense += amount;
+        }
+      }
+
+      let topCategoryName = "";
+      let topCategoryAmount = 0;
+      for (const [name, total] of categoryTotals.entries()) {
+        if (total > topCategoryAmount) {
+          topCategoryName = name;
+          topCategoryAmount = total;
+        }
+      }
+
+      return { currentExpense, previousExpense, topCategoryName, topCategoryAmount };
+    },
+  });
+
   useEffect(() => {
     const unsub = navigation.addListener("focus", () => {
       summaryQuery.refetch();
+      insightQuery.refetch();
     });
     return unsub;
-  }, [navigation, summaryQuery]);
+  }, [navigation, summaryQuery, insightQuery]);
 
   useEffect(() => {
     if (!summaryQuery.error) return;
@@ -104,6 +171,80 @@ export default function HomeScreen({ navigation }: any) {
     [summary.net]
   );
 
+  const topInsightCategory = insightQuery.data?.topCategoryName || "";
+  const insightText = useMemo(() => {
+    const insight = insightQuery.data;
+    if (!insight) return "Gerando observação do mês...";
+
+    const { currentExpense, previousExpense, topCategoryName, topCategoryAmount } = insight;
+    const seedBase = month.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + topCategoryName.length;
+    let comparison = "";
+
+    if (previousExpense <= 0 && currentExpense <= 0) {
+      comparison = pickVariant(
+        [
+          "Ainda não há dados suficientes para comparar gastos.",
+          "Você ainda não tem movimentações suficientes para uma comparação.",
+          "Assim que houver mais lançamentos, traremos uma comparação do mês.",
+        ],
+        seedBase
+      );
+    } else if (previousExpense <= 0) {
+      comparison = pickVariant(
+        [
+          "Este é seu primeiro mês com gastos registrados.",
+          "Primeiro mês com despesas registradas por aqui.",
+          "Você começou a registrar gastos agora, ótimo início.",
+        ],
+        seedBase + 3
+      );
+    } else {
+      const deltaPct = ((currentExpense - previousExpense) / previousExpense) * 100;
+      const absPct = Math.abs(deltaPct).toFixed(0);
+      if (deltaPct > 0) {
+        comparison = pickVariant(
+          [
+            `Seus gastos subiram ${absPct}% em relação ao mês passado.`,
+            `Você gastou ${absPct}% a mais que no mês anterior.`,
+            `Houve aumento de ${absPct}% nos gastos deste mês.`,
+          ],
+          seedBase + 7
+        );
+      } else if (deltaPct < 0) {
+        comparison = pickVariant(
+          [
+            `Seus gastos caíram ${absPct}% versus o mês passado.`,
+            `Você gastou ${absPct}% a menos que no mês anterior.`,
+            `Boa notícia: redução de ${absPct}% nos gastos do mês.`,
+          ],
+          seedBase + 11
+        );
+      } else {
+        comparison = pickVariant(
+          [
+            "Seus gastos ficaram no mesmo nível do mês passado.",
+            "Os gastos se mantiveram estáveis em relação ao mês anterior.",
+            "Sem variação relevante: gastos iguais ao mês passado.",
+          ],
+          seedBase + 13
+        );
+      }
+    }
+
+    if (topCategoryAmount > 0) {
+      const categorySentence = pickVariant(
+        [
+          `A categoria com maior peso foi ${topCategoryName} (${BRL(topCategoryAmount)}).`,
+          `Seu principal foco de despesa foi ${topCategoryName}, com ${BRL(topCategoryAmount)}.`,
+          `${topCategoryName} liderou os gastos do mês, totalizando ${BRL(topCategoryAmount)}.`,
+        ],
+        seedBase + 17
+      );
+      return `${comparison} ${categorySentence}`;
+    }
+    return comparison;
+  }, [insightQuery.data, month]);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
       <ScrollView
@@ -113,7 +254,7 @@ export default function HomeScreen({ navigation }: any) {
           paddingBottom: theme.space(5),
         }}
       >
-        <Text style={H1}>Resumo do mes</Text>
+        <Text style={H1}>Resumo do mês</Text>
         <Text style={[Muted, { marginTop: 6 }]}>{monthLabel(month)}</Text>
         <Text style={[Muted, { marginTop: 4 }]}>{netLabel}</Text>
 
@@ -123,13 +264,19 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         ) : (
           <>
-            <Card style={{ marginTop: theme.space(2) }}>
-              <Text style={Muted}>Saldo do mes</Text>
+            <Card
+              style={{
+                marginTop: theme.space(2),
+                backgroundColor: "rgba(124,58,237,0.18)",
+                borderColor: "rgba(124,58,237,0.45)",
+              }}
+            >
+              <Text style={Muted}>Saldo do mês</Text>
               <Text style={[Money, { marginTop: 6 }]}>{BRL(summary.net)}</Text>
 
               <View style={{ flexDirection: "row", gap: 12, marginTop: theme.space(2) }}>
                 <MiniStat icon="arrow-up" label="Entradas" value={BRL(summary.income)} />
-                <MiniStat icon="arrow-down" label="Saidas" value={BRL(summary.expense)} />
+                <MiniStat icon="arrow-down" label="Saídas" value={BRL(summary.expense)} />
               </View>
             </Card>
 
@@ -161,7 +308,7 @@ export default function HomeScreen({ navigation }: any) {
                   <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
                 </View>
                 <Text style={{ fontWeight: "700", color: theme.colors.text, flex: 1 }}>
-                  Ver extrato do mes
+                  Ver extrato do mês
                 </Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
               </Card>
@@ -192,7 +339,7 @@ export default function HomeScreen({ navigation }: any) {
                 }
 
                 setInviteCode(token);
-                showModal("Convite criado", "Copie e envie este codigo:\n\n" + token);
+                showModal("Convite criado", "Copie e envie este código:\n\n" + token);
               }}
               style={{ marginTop: theme.space(1.25) }}
             >
@@ -222,6 +369,39 @@ export default function HomeScreen({ navigation }: any) {
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
               </Card>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate("Extrato", {
+                  focusCategory: topInsightCategory || null,
+                })
+              }
+              style={{ marginTop: theme.space(1.25) }}
+            >
+              <Card
+                style={{
+                  padding: theme.space(1.75),
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: theme.space(1.5) }}>
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      backgroundColor: theme.colors.bg,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="analytics-outline" size={18} color={theme.colors.primary} />
+                  </View>
+                  <Text style={{ color: theme.colors.text, fontWeight: "700", flex: 1 }}>Análise mensal</Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+                </View>
+                <Text style={{ color: theme.colors.muted, marginTop: 10 }}>{insightText}</Text>
+              </Card>
+            </TouchableOpacity>
           </>
         )}
       </ScrollView>
@@ -230,12 +410,12 @@ export default function HomeScreen({ navigation }: any) {
         visible={modal.visible}
         title={modal.title}
         message={modal.message}
-        actionLabel={inviteCode ? "Copiar codigo" : undefined}
+        actionLabel={inviteCode ? "Copiar código" : undefined}
         onAction={
           inviteCode
             ? async () => {
                 await Clipboard.setStringAsync(inviteCode);
-                showModal("Copiado", "O codigo foi copiado para a area de transferencia.");
+                showModal("Copiado", "O código foi copiado para a área de transferência.");
                 setInviteCode("");
                 setTimeout(() => {
                   setModal((prev) => ({ ...prev, visible: false }));

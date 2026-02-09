@@ -39,7 +39,7 @@ export default function LoginScreen({ navigation }: any) {
     );
     if (!isConfirmed) {
       await supabase.auth.signOut();
-      Alert.alert("Confirme seu email", "Enviamos um codigo para seu email.");
+      Alert.alert("Confirme seu email", "Enviamos um código para seu email.");
       navigation.navigate("VerifyEmail", { email: email.trim().toLowerCase() });
     }
   }
